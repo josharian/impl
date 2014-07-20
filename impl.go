@@ -6,10 +6,10 @@ import (
 	"fmt"
 	"go/ast"
 	"go/build"
+	"go/format"
 	"go/parser"
 	"go/printer"
 	"go/token"
-	"io"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -227,43 +227,26 @@ func funcs(iface string) ([]Func, error) {
 const stub = "func ({{.Recv}}) {{.Name}}" +
 	"({{range .Params}}{{.Name}} {{.Type}}, {{end}})" +
 	"({{range .Res}}{{.Name}} {{.Type}}, {{end}})" +
-	"{\n}\n"
+	"{\n}\n\n"
 
 var tmpl = template.Must(template.New("test").Parse(stub))
 
-// fprintStubs prints nicely formatted method stubs
+// genStubs prints nicely formatted method stubs
 // for fns using receiver expression recv.
-func fprintStubs(w io.Writer, recv string, fns []Func) error {
-	pr, pw := io.Pipe()
+// If recv is not a valid receiver expression,
+// genStubs will panic.
+func genStubs(recv string, fns []Func) []byte {
+	var buf bytes.Buffer
+	for _, fn := range fns {
+		meth := Method{Recv: recv, Func: fn}
+		tmpl.Execute(&buf, meth)
+	}
 
-	// Print crudely, but with an easy to write template.
-	go func() {
-		for _, fn := range fns {
-			meth := Method{Recv: recv, Func: fn}
-			tmpl.Execute(pw, meth)
-		}
-		pw.Close()
-	}()
-
-	// Parse the crude printing.
-	r := io.MultiReader(strings.NewReader("package hack\n"), pr)
-	fset := token.NewFileSet()
-	f, err := parser.ParseFile(fset, "", r, 0)
+	pretty, err := format.Source(buf.Bytes())
 	if err != nil {
 		panic(err)
 	}
-
-	// Print only the method declarations.
-	for _, decl := range f.Decls {
-		if err := printer.Fprint(w, fset, decl); err != nil {
-			return err
-		}
-		if _, err := fmt.Fprint(w, "\n\n"); err != nil {
-			return err
-		}
-	}
-
-	return nil
+	return pretty
 }
 
 // validReceiver reports whether recv is a valid receiver expression.
@@ -288,7 +271,8 @@ func main() {
 		fatal(err)
 	}
 
-	fprintStubs(os.Stdout, recv, fns)
+	src := genStubs(recv, fns)
+	fmt.Print(string(src))
 }
 
 func fatal(msg interface{}) {
