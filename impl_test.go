@@ -1,7 +1,6 @@
 package main
 
 import (
-	"go/build"
 	"reflect"
 	"testing"
 )
@@ -26,7 +25,7 @@ func TestFindInterface(t *testing.T) {
 		{iface: "net.Conn", path: "net", id: "Conn"},
 		{iface: "http.ResponseWriter", path: "net/http", id: "ResponseWriter"},
 		{iface: "net.Tennis", wantErr: true},
-		{iface: "a+b", wantErr: true},
+		{iface: "a + b", wantErr: true},
 	}
 
 	for _, tt := range cases {
@@ -45,36 +44,30 @@ func TestFindInterface(t *testing.T) {
 	}
 }
 
-func TestInterfaceDecl(t *testing.T) {
+func TestTypeSpec(t *testing.T) {
 	// For now, just test whether we can find the interface.
 	cases := []struct {
-		path string
-		id   string
-		want bool
+		path    string
+		id      string
+		wantErr bool
 	}{
-		{path: "net", id: "Conn", want: true},
-		{path: "net", id: "Con", want: false},
+		{path: "net", id: "Conn"},
+		{path: "net", id: "Con", wantErr: true},
 	}
 
 	for _, tt := range cases {
-
-		pkg, err := build.Import(tt.path, "", 0)
-		if err != nil {
-			t.Errorf("couldn't find package %q", tt.path)
+		p, spec, err := typeSpec(tt.path, tt.id)
+		gotErr := err != nil
+		if tt.wantErr != gotErr {
+			t.Errorf("typeSpec(%q, %q).err=%v want %s", tt.path, tt.id, err, errBool(tt.wantErr))
 			continue
 		}
-
-		fset, typ, ok := interfaceDecl(pkg, tt.id)
-		if ok != tt.want {
-			t.Errorf("interfaceDecl(%q, %q).ok=%t want %t", tt.path, tt.id, ok, tt.want)
-			continue
-		}
-		if ok {
-			if fset == nil {
-				t.Errorf("interfaceDecl(%q, %q).fset=nil want non-nil", tt.path, tt.id)
+		if err == nil {
+			if reflect.DeepEqual(p, Pkg{}) {
+				t.Errorf("typeSpec(%q, %q).pkg=Pkg{} want non-nil", tt.path, tt.id)
 			}
-			if typ == nil {
-				t.Errorf("interfaceDecl(%q, %q).typ=nil want non-nil", tt.path, tt.id)
+			if spec == nil {
+				t.Errorf("typeSpec(%q, %q).spec=nil want non-nil", tt.path, tt.id)
 			}
 		}
 	}

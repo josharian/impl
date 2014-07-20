@@ -36,10 +36,13 @@ to prevent shell globbing.
 // For example, given "http.ResponseWriter", findInterface returns
 // "net/http", "ResponseWriter".
 func findInterface(iface string) (path string, id string, err error) {
-	// Let goimports do the heavy lifting.
-	src := "package hack\nvar i " + iface + "\n"
+	if len(strings.Fields(iface)) != 1 {
+		return "", "", fmt.Errorf("couldn't parse interface: %s", iface)
+	}
 
-	imp, err := imports.Process("", []byte(src), nil)
+	// Let goimports do the heavy lifting.
+	src := []byte("package hack\n" + "var i " + iface)
+	imp, err := imports.Process("", src, nil)
 	if err != nil {
 		return "", "", fmt.Errorf("couldn't parse interface: %s", iface)
 	}
@@ -54,41 +57,16 @@ func findInterface(iface string) (path string, id string, err error) {
 	if len(f.Imports) == 0 {
 		return "", "", fmt.Errorf("unrecognized interface: %s", iface)
 	}
-	path, err = strconv.Unquote(f.Imports[0].Path.Value)
+	raw := f.Imports[0].Path.Value   // "io"
+	path, err = strconv.Unquote(raw) // io
 	if err != nil {
 		panic(err)
 	}
-	varDecl := f.Decls[1].(*ast.GenDecl)                              // var i io.Reader
-	sel := varDecl.Specs[0].(*ast.ValueSpec).Type.(*ast.SelectorExpr) // io.Reader
-	id = sel.Sel.Name                                                 // Reader
+	decl := f.Decls[1].(*ast.GenDecl)      // var i io.Reader
+	spec := decl.Specs[0].(*ast.ValueSpec) // i io.Reader
+	sel := spec.Type.(*ast.SelectorExpr)   // io.Reader
+	id = sel.Sel.Name                      // Reader
 	return path, id, nil
-}
-
-// interfaceDecl locates the declaration for interface id in pkg, if present.
-func interfaceDecl(pkg *build.Package, id string) (*token.FileSet, *ast.InterfaceType, bool) {
-	fset := token.NewFileSet()
-	for _, file := range pkg.GoFiles {
-		f, err := parser.ParseFile(fset, filepath.Join(pkg.Dir, file), nil, 0)
-		if err != nil {
-			continue
-		}
-
-		for _, decl := range f.Decls {
-			decl, ok := decl.(*ast.GenDecl)
-			if !ok || decl.Tok != token.TYPE || len(decl.Specs) != 1 {
-				continue
-			}
-			spec := decl.Specs[0].(*ast.TypeSpec)
-			if spec.Name.Name != id {
-				continue
-			}
-			if typ, ok := spec.Type.(*ast.InterfaceType); ok {
-				return fset, typ, true
-			}
-		}
-	}
-
-	return nil, nil, false
 }
 
 // Pkg is a parsed build.Package.
@@ -97,37 +75,76 @@ type Pkg struct {
 	*token.FileSet
 }
 
-// gofmt pretty-prints n.
-func (p Pkg) gofmt(n ast.Expr) string {
+// typeSpec locates the *ast.TypeSpec for type id in the import path.
+func typeSpec(path string, id string) (Pkg, *ast.TypeSpec, error) {
+	pkg, err := build.Import(path, "", 0)
+	if err != nil {
+		return Pkg{}, nil, fmt.Errorf("couldn't find package %s: %v", path, err)
+	}
+
+	fset := token.NewFileSet() // share one fset across the whole package
+	for _, file := range pkg.GoFiles {
+		f, err := parser.ParseFile(fset, filepath.Join(pkg.Dir, file), nil, 0)
+		if err != nil {
+			continue
+		}
+
+		for _, decl := range f.Decls {
+			decl, ok := decl.(*ast.GenDecl)
+			if !ok || decl.Tok != token.TYPE {
+				continue
+			}
+			for _, spec := range decl.Specs {
+				spec := spec.(*ast.TypeSpec)
+				if spec.Name.Name != id {
+					continue
+				}
+				return Pkg{Package: pkg, FileSet: fset}, spec, nil
+			}
+		}
+	}
+	return Pkg{}, nil, fmt.Errorf("type %s not found in %s", id, path)
+}
+
+// gofmt pretty-prints e.
+func (p Pkg) gofmt(e ast.Expr) string {
 	var buf bytes.Buffer
-	printer.Fprint(&buf, p.FileSet, n)
+	printer.Fprint(&buf, p.FileSet, e)
 	return buf.String()
 }
 
-// fullType returns the fully qualified type of n.
+// fullType returns the fully qualified type of e.
 // Examples, assuming package net/http:
 // 	fullType(int) => "int"
 // 	fullType(Handler) => "http.Handler"
 // 	fullType(io.Reader) => "io.Reader"
 // 	fullType(*Request) => "*http.Request"
-func (p Pkg) fullType(n ast.Expr) string {
-	switch n := n.(type) {
-	case *ast.StarExpr:
-		return "*" + p.fullType(n.X)
-	case *ast.Ident:
-		if n.IsExported() {
-			return p.Package.Name + "." + p.gofmt(n)
+func (p Pkg) fullType(e ast.Expr) string {
+	ast.Inspect(e, func(n ast.Node) bool {
+		switch n := n.(type) {
+		case *ast.Ident:
+			// Using typeSpec instead of IsExported here would be
+			// more accurate, but it'd be crazy expensive, and if
+			// the type isn't exported, there's no point trying
+			// to implement it anyway.
+			if n.IsExported() {
+				n.Name = p.Package.Name + "." + n.Name
+			}
+		case *ast.SelectorExpr:
+			return false
 		}
-	}
-	return p.gofmt(n)
+		return true
+	})
+	return p.gofmt(e)
 }
 
 func (p Pkg) param(field *ast.Field) Param {
-	name := ""
+	var param Param
 	if len(field.Names) > 0 {
-		name = field.Names[0].Name
+		param.Name = field.Names[0].Name
 	}
-	return Param{Name: name, Type: p.fullType(field.Type)}
+	param.Type = p.fullType(field.Type)
+	return param
 }
 
 // Method represents a method signature.
@@ -149,6 +166,22 @@ type Param struct {
 	Type string
 }
 
+func (p Pkg) funcsig(f *ast.Field) Func {
+	fn := Func{Name: f.Names[0].Name}
+	typ := f.Type.(*ast.FuncType)
+	if typ.Params != nil {
+		for _, field := range typ.Params.List {
+			fn.Params = append(fn.Params, p.param(field))
+		}
+	}
+	if typ.Results != nil {
+		for _, field := range typ.Results.List {
+			fn.Res = append(fn.Res, p.param(field))
+		}
+	}
+	return fn
+}
+
 // funcs returns the set of methods required to implement iface.
 // It is called funcs rather than methods because the
 // function descriptions are functions; there is no receiver.
@@ -159,25 +192,25 @@ func funcs(iface string) ([]Func, error) {
 		return nil, err
 	}
 
-	// Locate the package containing the interface.
-	bpkg, err := build.Import(path, "", 0)
+	// Parse the package and find the interface declaration.
+	p, spec, err := typeSpec(path, id)
 	if err != nil {
-		return nil, fmt.Errorf("couldn't find package %s: %v", path, err)
+		return nil, fmt.Errorf("interface %s not found: %s", iface, err)
 	}
-
-	// Find the declaration of the interface.
-	fset, decl, ok := interfaceDecl(bpkg, id)
+	idecl, ok := spec.Type.(*ast.InterfaceType)
 	if !ok {
-		return nil, fmt.Errorf("interface not found: %s", iface)
+		return nil, fmt.Errorf("not an interface: %s", iface)
 	}
 
-	pkg := Pkg{FileSet: fset, Package: bpkg}
+	if idecl.Methods == nil {
+		return nil, fmt.Errorf("empty interface: %s", iface)
+	}
 
 	var fns []Func
-	for _, fndecl := range decl.Methods.List {
-		// Handle embedded interfaces.
+	for _, fndecl := range idecl.Methods.List {
 		if len(fndecl.Names) == 0 {
-			embedded, err := funcs(pkg.fullType(fndecl.Type))
+			// Embedded interface: recurse
+			embedded, err := funcs(p.fullType(fndecl.Type))
 			if err != nil {
 				return nil, err
 			}
@@ -185,19 +218,7 @@ func funcs(iface string) ([]Func, error) {
 			continue
 		}
 
-		// Extract function signatures.
-		fn := Func{Name: fndecl.Names[0].Name}
-		typ := fndecl.Type.(*ast.FuncType)
-		if typ.Params != nil {
-			for _, field := range typ.Params.List {
-				fn.Params = append(fn.Params, pkg.param(field))
-			}
-		}
-		if typ.Results != nil {
-			for _, field := range typ.Results.List {
-				fn.Res = append(fn.Res, pkg.param(field))
-			}
-		}
+		fn := p.funcsig(fndecl)
 		fns = append(fns, fn)
 	}
 	return fns, nil
