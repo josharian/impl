@@ -14,3 +14,5 @@ func (f *File) Close() error {
 }
 
 ```
+
+You can use `impl` from Vim with [vim-go-impl](https://github.com/rhysd/vim-go-impl)
