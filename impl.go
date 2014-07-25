@@ -227,7 +227,7 @@ func funcs(iface string) ([]Func, error) {
 const stub = "func ({{.Recv}}) {{.Name}}" +
 	"({{range .Params}}{{.Name}} {{.Type}}, {{end}})" +
 	"({{range .Res}}{{.Name}} {{.Type}}, {{end}})" +
-	"{\n}\n\n"
+	"{\n" + "panic(\"not implemented\")" + "}\n\n"
 
 var tmpl = template.Must(template.New("test").Parse(stub))
 
