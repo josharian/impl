@@ -140,6 +140,39 @@ func TestFuncs(t *testing.T) {
 				},
 			},
 		},
+		{
+			iface: "cipher.AEAD",
+			want: []Func{
+				{
+					Name: "NonceSize",
+					Res:  []Param{{Type: "int"}},
+				},
+				{
+					Name: "Overhead",
+					Res:  []Param{{Type: "int"}},
+				},
+				{
+					Name: "Seal",
+					Params: []Param{
+						{Name: "dst", Type: "[]byte"},
+						{Name: "nonce", Type: "[]byte"},
+						{Name: "plaintext", Type: "[]byte"},
+						{Name: "data", Type: "[]byte"},
+					},
+					Res: []Param{{Type: "[]byte"}},
+				},
+				{
+					Name: "Open",
+					Params: []Param{
+						{Name: "dst", Type: "[]byte"},
+						{Name: "nonce", Type: "[]byte"},
+						{Name: "ciphertext", Type: "[]byte"},
+						{Name: "data", Type: "[]byte"},
+					},
+					Res: []Param{{Type: "[]byte"}, {Type: "error"}},
+				},
+			},
+		},
 		{iface: "net.Tennis", wantErr: true},
 	}
 
@@ -151,7 +184,7 @@ func TestFuncs(t *testing.T) {
 			continue
 		}
 		if !reflect.DeepEqual(fns, tt.want) {
-			t.Errorf("funcs(%q).fns=%q want %q", tt.iface, fns, tt.want)
+			t.Errorf("funcs(%q).fns=\n%v\nwant\n%v\n", tt.iface, fns, tt.want)
 		}
 	}
 }
