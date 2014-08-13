@@ -138,13 +138,17 @@ func (p Pkg) fullType(e ast.Expr) string {
 	return p.gofmt(e)
 }
 
-func (p Pkg) param(field *ast.Field) Param {
-	var param Param
-	if len(field.Names) > 0 {
-		param.Name = field.Names[0].Name
+func (p Pkg) params(field *ast.Field) []Param {
+	var params []Param
+	typ := p.fullType(field.Type)
+	for _, name := range field.Names {
+		params = append(params, Param{Name: name.Name, Type: typ})
 	}
-	param.Type = p.fullType(field.Type)
-	return param
+	// Handle anonymous params
+	if len(params) == 0 {
+		params = []Param{Param{Type: typ}}
+	}
+	return params
 }
 
 // Method represents a method signature.
@@ -171,12 +175,12 @@ func (p Pkg) funcsig(f *ast.Field) Func {
 	typ := f.Type.(*ast.FuncType)
 	if typ.Params != nil {
 		for _, field := range typ.Params.List {
-			fn.Params = append(fn.Params, p.param(field))
+			fn.Params = append(fn.Params, p.params(field)...)
 		}
 	}
 	if typ.Results != nil {
 		for _, field := range typ.Results.List {
-			fn.Res = append(fn.Res, p.param(field))
+			fn.Res = append(fn.Res, p.params(field)...)
 		}
 	}
 	return fn
