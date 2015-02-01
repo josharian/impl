@@ -16,7 +16,7 @@ import (
 	"strings"
 	"text/template"
 
-	"code.google.com/p/go.tools/imports"
+	"golang.org/x/tools/imports"
 )
 
 const usage = `impl <recv> <iface>
