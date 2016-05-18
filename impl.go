@@ -42,7 +42,7 @@ func findInterface(iface string) (path string, id string, err error) {
 
 	// Let goimports do the heavy lifting.
 	src := []byte("package hack\n" + "var i " + iface)
-	imp, err := imports.Process("", src, nil)
+	imp, err := imports.Process(".", src, nil)
 	if err != nil {
 		return "", "", fmt.Errorf("couldn't parse interface: %s", iface)
 	}
