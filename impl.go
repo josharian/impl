@@ -279,6 +279,11 @@ func genStubs(recv string, fns []Func) []byte {
 
 // validReceiver reports whether recv is a valid receiver expression.
 func validReceiver(recv string) bool {
+	if recv == "" {
+		// The parse will parse empty receivers, but we don't want to accept them,
+		// since it won't generate a usable code snippet.
+		return false
+	}
 	fset := token.NewFileSet()
 	_, err := parser.ParseFile(fset, "", "package hack\nfunc ("+recv+") Foo()", 0)
 	return err == nil
