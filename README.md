@@ -20,6 +20,11 @@ func (f *File) Close() error {
 	panic("not implemented")
 }
 
+# or provide a full name by specifying the namespace
+impl 'ts *Source' golang.org/x/oauth2.TokenSource
+func (ts *Source) Token() (*oauth2.Token, error) {
+    panic("not implemented")
+}
 ```
 
 You can use `impl` from Vim with [vim-go-impl](https://github.com/rhysd/vim-go-impl)
