@@ -35,40 +35,37 @@ to prevent shell globbing.
 // findInterface returns the import path and identifier of an interface.
 // For example, given "http.ResponseWriter", findInterface returns
 // "net/http", "ResponseWriter".
+// If a fully qualified interface is given, such as "net/http.ResponseWriter",
+// it simply parses the input.
 func findInterface(iface string) (path string, id string, err error) {
 	if len(strings.Fields(iface)) != 1 {
 		return "", "", fmt.Errorf("couldn't parse interface: %s", iface)
 	}
 
-	var importPath string
-	liStash := strings.LastIndex(iface, "/")
-	liDot := strings.LastIndex(iface, ".")
-	if liStash > -1 {
-		// make sure iface is not ending with "/" (e.g. reject net/http/)
-		if liStash+1 == len(iface) {
+	if slash := strings.LastIndex(iface, "/"); slash > -1 {
+		// package path provided
+		dot := strings.LastIndex(iface, ".")
+		// make sure iface does not end with "/" (e.g. reject net/http/)
+		if slash+1 == len(iface) {
 			return "", "", fmt.Errorf("interface name cannot end with a '/' character: %s", iface)
 		}
-		// make sure iface has a "." after "/" (e.g. reject net/http/httputil)
-		if liDot < liStash {
+		// make sure iface does not end with "." (e.g. reject net/http.)
+		if dot+1 == len(iface) {
+			return "", "", fmt.Errorf("interface name cannot end with a '.' character: %s", iface)
+		}
+		// make sure iface has exactly one "." after "/" (e.g. reject net/http/httputil)
+		if strings.Count(iface[slash:], ".") != 1 {
 			return "", "", fmt.Errorf("invalid interface name: %s", iface)
 		}
-		importPath = iface[:liDot]
-		iface = iface[liStash+1:]
+		return iface[:dot], iface[dot+1:], nil
 	}
 
-	var imp []byte
-	if importPath == "" {
-		src := []byte("package hack\n" + "var i " + iface)
-		// If we couldn't determine the import path, goimports will
-		// auto fix the import path.
-		imp, err = imports.Process(".", src, nil)
-		if err != nil {
-			return "", "", fmt.Errorf("couldn't parse interface: %s", iface)
-		}
-	} else {
-		imp = []byte(fmt.Sprintf(`package hack
-		import "%s"
-		var i %s`, importPath, iface))
+	src := []byte("package hack\n" + "var i " + iface)
+	// If we couldn't determine the import path, goimports will
+	// auto fix the import path.
+	imp, err := imports.Process(".", src, nil)
+	if err != nil {
+		return "", "", fmt.Errorf("couldn't parse interface: %s", iface)
 	}
 
 	// imp should now contain an appropriate import.

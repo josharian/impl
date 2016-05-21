@@ -26,6 +26,11 @@ func TestFindInterface(t *testing.T) {
 		{iface: "http.ResponseWriter", path: "net/http", id: "ResponseWriter"},
 		{iface: "net.Tennis", wantErr: true},
 		{iface: "a + b", wantErr: true},
+		{iface: "a/b/c/", wantErr: true},
+		{iface: "a/b/c/pkg", wantErr: true},
+		{iface: "a/b/c/pkg.", wantErr: true},
+		{iface: "a/b/c/pkg.Typ", path: "a/b/c/pkg", id: "Typ"},
+		{iface: "a/b/c/pkg.Typ.Foo", wantErr: true},
 	}
 
 	for _, tt := range cases {

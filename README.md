@@ -20,9 +20,11 @@ func (f *File) Close() error {
 	panic("not implemented")
 }
 
-# or provide a full name by specifying the namespace
-impl 'ts *Source' golang.org/x/oauth2.TokenSource
-func (ts *Source) Token() (*oauth2.Token, error) {
+# You can also provide a full name by specifying the package path.
+# This helps in cases where the interface can't be guessed
+# just from the package name and interface name.
+$ impl 's *Source' golang.org/x/oauth2.TokenSource
+func (s *Source) Token() (*oauth2.Token, error) {
     panic("not implemented")
 }
 ```
