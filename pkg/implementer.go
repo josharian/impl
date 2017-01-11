@@ -93,13 +93,15 @@ func (i *Implementer) Visit(node ast.Node) (w ast.Visitor) {
 		// declaration with matching type name is found.
 		if !i.found && node.Tok == token.TYPE {
 			i.typeDecl = node
+			// We may continue traversing through top-level GenDecls
 			return i
 		}
 	case *ast.TypeSpec:
-		if getIdent(node, 0) == i.recvName {
+		if getIdent(node, 0) == i.recvName || (node.Name != nil && node.Name.Name == i.recvName) {
 			i.found = true
 		}
 	case *ast.FuncDecl:
+		// Parse function declarations to get the method set
 		if node.Recv != nil && node.Name != nil {
 			for _, r := range node.Recv.List {
 				name := getIdent(r.Type, -1)
@@ -113,6 +115,7 @@ func (i *Implementer) Visit(node ast.Node) (w ast.Visitor) {
 		return i
 	}
 
+	// By default we do not traverse further down the tree
 	return nil
 }
 
@@ -194,7 +197,7 @@ func (i *Implementer) GenForPosition(p *token.Position) ([]byte, error) {
 	i.walk()
 
 	if !i.found {
-		return nil, fmt.Errorf("requested receiver not found")
+		return nil, fmt.Errorf("requested receiver not found: %s", i.recvName)
 	}
 
 	if p == nil {
@@ -233,11 +236,7 @@ func (i *Implementer) validateReceiver() error {
 		// since it won't generate a usable code snippet.
 		return fmt.Errorf("receiver was the empty string")
 	}
-	i.fset = token.NewFileSet()
-
-	i.file, err = parser.ParseDir(i.fset, i.Dir, nil, 0)
-
-	return err
+	return nil
 }
 
 func (i *Implementer) init() error {
@@ -260,6 +259,9 @@ func (i *Implementer) init() error {
 	if err != nil {
 		return err
 	}
+
+	i.fset = token.NewFileSet()
+	i.file, err = parser.ParseDir(i.fset, i.Dir, nil, 0)
 
 	i.funcs, err = funcs(i.IFace)
 	if err != nil {
