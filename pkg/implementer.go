@@ -187,11 +187,6 @@ func (i *Implementer) GenForPosition(p *token.Position) ([]byte, error) {
 		return nil, err
 	}
 
-	err = ensureOffset(p)
-	if err != nil {
-		return nil, err
-	}
-
 	newline := []byte("\n\n")
 
 	src = bytes.Join([][]byte{newline, src, newline}, nil)
@@ -205,6 +200,11 @@ func (i *Implementer) GenForPosition(p *token.Position) ([]byte, error) {
 	if p == nil {
 		pp := i.fset.Position(i.typeDecl.End())
 		p = &pp
+	}
+
+	err = ensureOffset(p)
+	if err != nil {
+		return nil, err
 	}
 
 	orig, err := ioutil.ReadFile(p.Filename)
