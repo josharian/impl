@@ -210,7 +210,7 @@ func TestValidReceiver(t *testing.T) {
 		i := Implementer{Recv: tt.recv}
 		got := i.validateReceiver()
 		if got == nil && tt.want {
-			t.Errorf("validReceiver(%q)=%t want %t", tt.recv, got, tt.want)
+			t.Errorf("validReceiver(%q)=%v want %t", tt.recv, got, tt.want)
 		}
 	}
 }

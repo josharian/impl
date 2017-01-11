@@ -56,6 +56,7 @@ type Implementer struct {
 	buf  *bytes.Buffer
 }
 
+// Visit implements ast.Visit
 func (i *Implementer) Visit(node ast.Node) (w ast.Visitor) {
 	if node == nil {
 		return nil
@@ -90,6 +91,8 @@ func (i *Implementer) Visit(node ast.Node) (w ast.Visitor) {
 	return nil
 }
 
+// Position returns, if found, the token.Position of the end of the type
+// declaration for the specified receiver.
 func (i *Implementer) Position() (*token.Position, error) {
 	err := i.init()
 	if err != nil {
@@ -101,10 +104,9 @@ func (i *Implementer) Position() (*token.Position, error) {
 	return &p, nil
 }
 
-// genStubs prints nicely formatted method stubs
-// for fns using receiver expression recv.
-// If recv is not a valid receiver expression,
-// genStubs will panic.
+// GenStubs prints nicely formatted method stubs for fns using receiver
+// expression recv. If the Implementer is not in a valid state, or an error
+// occurs, the error will be returned.
 func (i *Implementer) GenStubs() ([]byte, error) {
 	err := i.init()
 	if err != nil {
@@ -121,8 +123,46 @@ func (i *Implementer) GenStubs() ([]byte, error) {
 	return format.Source(i.buf.Bytes())
 }
 
+// ensureOffset will ensure that, given a file:line:col generated position, the
+// offset is correct for the file.
+func ensureOffset(p *token.Position) error {
+	if p.Offset != 0 || (p.Line == 0 && p.Column == 0) {
+		return nil
+	}
+
+	bs, err := ioutil.ReadFile(p.Filename)
+	if err != nil {
+		return err
+	}
+
+	col, line := 1, 1
+
+	for i := range bs {
+		col++
+		if line == p.Line && col == p.Column {
+			p.Offset = i
+			return nil
+		}
+		if bs[i] == '\n' {
+			col = 0
+			line++
+			continue
+		}
+	}
+	return fmt.Errorf("Could not find %s", p)
+}
+
+// GenForPosition allows users to have more flexible stub generation, with the
+// ability to specify exactly where the implementation should be generated. If
+// the token.Position argument is nil, the generated code will be inserted
+// immediately after the receiving type's declaration.
 func (i *Implementer) GenForPosition(p *token.Position) ([]byte, error) {
 	src, err := i.GenStubs()
+	if err != nil {
+		return nil, err
+	}
+
+	err = ensureOffset(p)
 	if err != nil {
 		return nil, err
 	}
@@ -130,6 +170,8 @@ func (i *Implementer) GenForPosition(p *token.Position) ([]byte, error) {
 	newline := []byte("\n\n")
 
 	src = bytes.Join([][]byte{newline, src, newline}, nil)
+
+	i.walk()
 
 	if !i.found {
 		return nil, fmt.Errorf("requested receiver not found")
@@ -174,6 +216,10 @@ func (i *Implementer) validateReceiver() error {
 }
 
 func (i *Implementer) init() error {
+	if i.buf != nil {
+		// Already initialized
+		return nil
+	}
 	i.buf = &bytes.Buffer{}
 	i.file = map[string]*ast.Package{}
 	i.methods = map[string]*ast.FuncDecl{}
@@ -199,6 +245,10 @@ func (i *Implementer) init() error {
 }
 
 func (i *Implementer) walk() error {
+	if i.found {
+		return nil
+	}
+
 	var err error
 
 	i.recvName, err = getType(i.Recv)
