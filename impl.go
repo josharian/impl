@@ -6,10 +6,10 @@ import (
 	"fmt"
 	"go/ast"
 	"go/build"
-	"go/format"
 	"go/parser"
 	"go/printer"
 	"go/token"
+	"log"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -256,56 +256,16 @@ const stub = "func ({{.Recv}}) {{.Name}}" +
 
 var tmpl = template.Must(template.New("test").Parse(stub))
 
-// genStubs prints nicely formatted method stubs
-// for fns using receiver expression recv.
-// If recv is not a valid receiver expression,
-// genStubs will panic.
-func genStubs(recv string, fns []Func) []byte {
-	var buf bytes.Buffer
-	for _, fn := range fns {
-		meth := Method{Recv: recv, Func: fn}
-		tmpl.Execute(&buf, meth)
-	}
-
-	pretty, err := format.Source(buf.Bytes())
-	if err != nil {
-		panic(err)
-	}
-	return pretty
-}
-
-// validReceiver reports whether recv is a valid receiver expression.
-func validReceiver(recv string) bool {
-	if recv == "" {
-		// The parse will parse empty receivers, but we don't want to accept them,
-		// since it won't generate a usable code snippet.
-		return false
-	}
-	fset := token.NewFileSet()
-	_, err := parser.ParseFile(fset, "", "package hack\nfunc ("+recv+") Foo()", 0)
-	return err == nil
-}
-
 func main() {
-	if len(os.Args) != 3 {
-		fmt.Fprint(os.Stderr, usage)
-		os.Exit(2)
-	}
-	recv, iface := os.Args[1], os.Args[2]
-	if !validReceiver(recv) {
-		fatal(fmt.Sprintf("invalid receiver: %q", recv))
+	imp := implementer{}
+
+	if err := imp.init(os.Args); err != nil {
+		log.Fatal(err)
 	}
 
-	fns, err := funcs(iface)
+	src, err := imp.genStubs()
 	if err != nil {
-		fatal(err)
+		log.Fatal(err)
 	}
-
-	src := genStubs(recv, fns)
 	fmt.Print(string(src))
-}
-
-func fatal(msg interface{}) {
-	fmt.Fprintln(os.Stderr, msg)
-	os.Exit(1)
 }
