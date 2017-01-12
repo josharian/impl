@@ -9,7 +9,7 @@ import (
 	"go/printer"
 	"go/token"
 	"html/template"
-	"path/filepath"
+	"reflect"
 	"strconv"
 	"strings"
 
@@ -17,6 +17,23 @@ import (
 )
 
 var tmpl = template.Must(template.New("test").Parse(stub))
+
+func hasIdentifier(ident string, node ast.Node) bool {
+	var found bool
+
+	ast.Inspect(node, func(n ast.Node) bool {
+		switch n := n.(type) {
+		case *ast.Ident:
+			if n.Name == ident {
+				found = true
+				return false
+			}
+		}
+		return true
+	})
+
+	return found
+}
 
 // findInterface returns the import path and identifier of an interface.
 // For example, given "http.ResponseWriter", findInterface returns
@@ -26,6 +43,23 @@ var tmpl = template.Must(template.New("test").Parse(stub))
 func findInterface(iface string) (path string, id string, err error) {
 	if len(strings.Fields(iface)) != 1 {
 		return "", "", fmt.Errorf("couldn't parse interface: %s", iface)
+	}
+
+	if strings.Index(iface, ".") == -1 {
+		fs := token.NewFileSet()
+
+		pkgs, err := parser.ParseDir(fs, ".", nil, 0)
+		if err != nil {
+			return "", "", err
+		}
+
+		for _, pkg := range pkgs {
+			for _, file := range pkg.Files {
+				if hasIdentifier(iface, file) {
+					return ".", iface, nil
+				}
+			}
+		}
 	}
 
 	if slash := strings.LastIndex(iface, "/"); slash > -1 {
@@ -84,32 +118,43 @@ type Pkg struct {
 
 // typeSpec locates the *ast.TypeSpec for type id in the import path.
 func typeSpec(path string, id string) (Pkg, *ast.TypeSpec, error) {
-	pkg, err := build.Import(path, "", 0)
+	pkg, err := build.ImportDir(".", 0)
 	if err != nil {
-		return Pkg{}, nil, fmt.Errorf("couldn't find package %s: %v", path, err)
+		return Pkg{}, nil, err
+	}
+
+	if path != "." {
+		var err error
+		pkg, err = build.Import(path, "", 0)
+		if err != nil {
+			return Pkg{}, nil, fmt.Errorf("couldn't find package %s: %v", path, err)
+		}
 	}
 
 	fset := token.NewFileSet() // share one fset across the whole package
-	for _, file := range pkg.GoFiles {
-		f, err := parser.ParseFile(fset, filepath.Join(pkg.Dir, file), nil, 0)
-		if err != nil {
-			continue
-		}
 
-		for _, decl := range f.Decls {
-			decl, ok := decl.(*ast.GenDecl)
-			if !ok || decl.Tok != token.TYPE {
-				continue
-			}
-			for _, spec := range decl.Specs {
-				spec := spec.(*ast.TypeSpec)
-				if spec.Name.Name != id {
+	pkgs, err := parser.ParseDir(fset, pkg.Dir, nil, 0)
+	if err != nil {
+		return Pkg{}, nil, err
+	}
+	for _, p := range pkgs {
+		for _, file := range p.Files {
+			for _, decl := range file.Decls {
+				decl, ok := decl.(*ast.GenDecl)
+				if !ok || decl.Tok != token.TYPE {
 					continue
 				}
-				return Pkg{Package: pkg, FileSet: fset}, spec, nil
+				for _, spec := range decl.Specs {
+					spec := spec.(*ast.TypeSpec)
+					if spec.Name.Name != id {
+						continue
+					}
+					return Pkg{Package: pkg, FileSet: fset}, spec, nil
+				}
 			}
 		}
 	}
+
 	return Pkg{}, nil, fmt.Errorf("type %s not found in %s", id, path)
 }
 
@@ -210,7 +255,7 @@ func funcs(iface string) ([]Func, error) {
 	}
 	idecl, ok := spec.Type.(*ast.InterfaceType)
 	if !ok {
-		return nil, fmt.Errorf("not an interface: %s", iface)
+		return nil, fmt.Errorf("not an interface: %s (%s)", iface, reflect.ValueOf(spec.Type).Type())
 	}
 
 	if idecl.Methods == nil {
