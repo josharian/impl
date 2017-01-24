@@ -8,32 +8,7 @@ import (
 	"go/parser"
 	"go/token"
 	"io/ioutil"
-	"strings"
 )
-
-// TODO implement impl.Func == ast.FuncDecl checking
-
-// ErrMethodExists will be returned when a method should be created but an
-// existing method already exists for the given receiver.
-type ErrMethodExists struct {
-	Wanted Func
-	Exists ast.FuncDecl
-}
-
-func (e *ErrMethodExists) Error() string {
-	args := []string{}
-	for _, p := range e.Wanted.Params {
-		args = append(args, p.Name+" "+p.Type)
-	}
-	ret := []string{}
-	for _, r := range e.Wanted.Res {
-		ret = append(ret, r.Name+" "+r.Type)
-	}
-
-	sig := fmt.Sprintf("%s(%s) (%s)", e.Wanted.Name, strings.Join(args, ", "), strings.Join(ret, ", "))
-
-	return fmt.Sprintf("wanted to create Method %q, but this method name already exists for the receiver", sig)
-}
 
 // Get some ordinal ast.Ident.Name from a given ast.Node. A negative will return
 // the last identifier in the tree.
@@ -81,42 +56,24 @@ type Implementer struct {
 	buf  *bytes.Buffer
 }
 
-// Visit implements ast.Visit
-func (i *Implementer) Visit(node ast.Node) (w ast.Visitor) {
-	if node == nil {
-		return nil
-	}
+func getMethods(id string, f *ast.File) []*ast.FuncDecl {
+	decls := []*ast.FuncDecl{}
 
-	switch node := node.(type) {
-	case *ast.GenDecl:
-		// Replace the type declaration reference until the top-level type
-		// declaration with matching type name is found.
-		if !i.found && node.Tok == token.TYPE {
-			i.typeDecl = node
-			// We may continue traversing through top-level GenDecls
-			return i
-		}
-	case *ast.TypeSpec:
-		if getIdent(node, 0) == i.recvName || (node.Name != nil && node.Name.Name == i.recvName) {
-			i.found = true
-		}
-	case *ast.FuncDecl:
-		// Parse function declarations to get the method set
-		if node.Recv != nil && node.Name != nil {
-			for _, r := range node.Recv.List {
-				name := getIdent(r.Type, -1)
-				if name == i.recvName {
-					i.methods[node.Name.Name] = node
+	for _, decl := range f.Decls {
+		switch decl := decl.(type) {
+		case *ast.FuncDecl:
+			if decl.Recv != nil && decl.Name != nil {
+				for _, r := range decl.Recv.List {
+					name := getIdent(r.Type, -1)
+					if name == id {
+						decls = append(decls, decl)
+					}
 				}
 			}
 		}
-	case *ast.File:
-		//Continue parsing files
-		return i
 	}
 
-	// By default we do not traverse further down the tree
-	return nil
+	return decls
 }
 
 // Position returns, if found, the token.Position of the end of the type
@@ -285,7 +242,17 @@ func (i *Implementer) walk() error {
 
 	for _, pkg := range i.file {
 		for _, file := range pkg.Files {
-			ast.Walk(i, file)
+			if !i.found {
+				gen, _ := findTopTypeDecl(i.recvName, file)
+				if gen != nil {
+					i.found = true
+					i.typeDecl = gen
+				}
+			}
+
+			for _, meth := range getMethods(i.IFace, file) {
+				i.methods[meth.Name.Name] = meth
+			}
 		}
 	}
 

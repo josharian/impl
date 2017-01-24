@@ -35,6 +35,24 @@ func hasIdentifier(ident string, node ast.Node) bool {
 	return found
 }
 
+func findTopTypeDecl(id string, f *ast.File) (*ast.GenDecl, *ast.TypeSpec) {
+	for _, decl := range f.Decls {
+		decl, ok := decl.(*ast.GenDecl)
+		if !ok || decl.Tok != token.TYPE {
+			continue
+		}
+		for _, spec := range decl.Specs {
+			switch spec := spec.(type) {
+			case *ast.TypeSpec:
+				if spec.Name.Name == id || getIdent(spec, 0) == id {
+					return decl, spec
+				}
+			}
+		}
+	}
+	return nil, nil
+}
+
 // findInterface returns the import path and identifier of an interface.
 // For example, given "http.ResponseWriter", findInterface returns
 // "net/http", "ResponseWriter".
@@ -118,12 +136,15 @@ type Pkg struct {
 
 // typeSpec locates the *ast.TypeSpec for type id in the import path.
 func typeSpec(path string, id string) (Pkg, *ast.TypeSpec, error) {
-	pkg, err := build.ImportDir(".", 0)
-	if err != nil {
-		return Pkg{}, nil, err
-	}
+	var pkg *build.Package
+	var err error
 
-	if path != "." {
+	if path == "." {
+		pkg, err = build.ImportDir(".", 0)
+		if err != nil {
+			return Pkg{}, nil, err
+		}
+	} else {
 		var err error
 		pkg, err = build.Import(path, "", 0)
 		if err != nil {
@@ -137,20 +158,17 @@ func typeSpec(path string, id string) (Pkg, *ast.TypeSpec, error) {
 	if err != nil {
 		return Pkg{}, nil, err
 	}
+
+	tID, err := getType(id)
+	if err != nil {
+		return Pkg{}, nil, err
+	}
+
 	for _, p := range pkgs {
 		for _, file := range p.Files {
-			for _, decl := range file.Decls {
-				decl, ok := decl.(*ast.GenDecl)
-				if !ok || decl.Tok != token.TYPE {
-					continue
-				}
-				for _, spec := range decl.Specs {
-					spec := spec.(*ast.TypeSpec)
-					if spec.Name.Name != id {
-						continue
-					}
-					return Pkg{Package: pkg, FileSet: fset}, spec, nil
-				}
+			_, spec := findTopTypeDecl(tID, file)
+			if spec != nil {
+				return Pkg{Package: pkg, FileSet: fset}, spec, nil
 			}
 		}
 	}
