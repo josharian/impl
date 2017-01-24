@@ -1,7 +1,5 @@
 package main
 
-//TODO refactor to pkg/impl package
-
 import (
 	"bytes"
 	"fmt"
@@ -9,30 +7,21 @@ import (
 	"go/format"
 	"go/parser"
 	"go/token"
-	"log"
-	"reflect"
-	"strings"
+	"io/ioutil"
 )
 
-// visitorFunc is a very simplistic implementation of an ast.Visitor based on a
-// function that returns true if visiting (ast.Walk) should continue.
-type visitorFunc func(ast.Node) (proceed bool)
-
-func (v visitorFunc) Visit(node ast.Node) (w ast.Visitor) {
-	if v(node) {
-		return v
-	}
-	return nil
-}
-
-func getLastIdent(node ast.Node) string {
-	var ident string
+// Get some ordinal ast.Ident.Name from a given ast.Node. A negative will return
+// the last identifier in the tree.
+func getIdent(node ast.Node, ord int) string {
+	ident := ""
+	n := 0
 
 	ast.Inspect(node, func(child ast.Node) bool {
 		if child, ok := child.(*ast.Ident); ok {
 			ident = child.Name
+			n++
 		}
-		return true
+		return ord < 0 || n == ord
 	})
 
 	return ident
@@ -46,138 +35,181 @@ func getType(recv string) (string, error) {
 		return "", err
 	}
 
-	return getLastIdent(a), nil
+	return getIdent(a, -1), nil
 }
 
-type implementer struct {
-	recv, iface string
-	funcs       []Func
+// An Implementer can, for a certain directory, create and/or update
+// implementation with Go source code for a particular interface
+type Implementer struct {
+	Recv, IFace, Dir string
+
+	funcs []Func
 
 	recvName string
-	typeSpec *ast.TypeSpec
-	ident    *ast.Ident
+	typeDecl *ast.GenDecl
 	methods  map[string]*ast.FuncDecl
+
+	found bool
 
 	file map[string]*ast.Package
 	fset *token.FileSet
 	buf  *bytes.Buffer
 }
 
-func (i *implementer) Visit(node ast.Node) (w ast.Visitor) {
+func (i *Implementer) Visit(node ast.Node) (w ast.Visitor) {
 	if node == nil {
 		return nil
 	}
 
-	log.Println(node, reflect.ValueOf(node).Type())
-
-	switch n := node.(type) {
-	case *ast.TypeSpec:
-		// If we haven't found a matching top-level identifier yet, keep storing the most
-		// recent TypeSpec
-		if i.ident == nil {
-
-			// If we find a typeSpec inside our current top-level typespec, ignore it
-			if i.typeSpec != nil && n.Pos() < i.typeSpec.End() {
-				log.Printf("nother typespec; new: %s, existing: %s\n", n.Name.Name, i.typeSpec.Name.Name)
-				return nil
-			}
-
-			i.typeSpec = n
+	switch node := node.(type) {
+	case *ast.GenDecl:
+		// Replace the type declaration reference until the top-level type
+		// declaration with matching type name is found.
+		if !i.found && node.Tok == token.TYPE {
+			i.typeDecl = node
+			return i
 		}
-		return i
-	case *ast.Ident:
-		// Once we find an identifier whose name matches
-		if i.ident == nil {
-			if n.Name != i.recvName {
-				// If the name does not match (therefore this is not the typespec's
-				// first identifier and thus the name of a type, stop processing this
-				// portion of the tree.
-				return nil
-			}
-			i.ident = n
+	case *ast.TypeSpec:
+		if getIdent(node, 0) == i.recvName {
+			i.found = true
 		}
 	case *ast.FuncDecl:
-		if n.Recv != nil && n.Name != nil {
-			for _, r := range n.Recv.List {
-				typeName := getLastIdent(r.Type)
-				if typeName == i.recvName {
-					i.methods[n.Name.Name] = n
+		if node.Recv != nil && node.Name != nil {
+			for _, r := range node.Recv.List {
+				name := getIdent(r.Type, -1)
+				if name == i.recvName {
+					i.methods[node.Name.Name] = node
 				}
 			}
 		}
-
-		return nil
-	// Only parse top-level identifiers
 	case *ast.File:
+		//Continue parsing files
 		return i
 	}
+
 	return nil
+}
+
+func (i *Implementer) Position() (*token.Position, error) {
+	err := i.init()
+	if err != nil {
+		return nil, err
+	}
+
+	p := i.fset.Position(i.typeDecl.End())
+
+	return &p, nil
 }
 
 // genStubs prints nicely formatted method stubs
 // for fns using receiver expression recv.
 // If recv is not a valid receiver expression,
 // genStubs will panic.
-func (i *implementer) genStubs() ([]byte, error) {
-	for _, fn := range i.funcs {
-		meth := Method{Recv: i.recv, Func: fn}
-		tmpl.Execute(i.buf, meth)
-	}
-
-	var err error
-	i.recvName, err = getType(i.recv)
+func (i *Implementer) GenStubs() ([]byte, error) {
+	err := i.init()
 	if err != nil {
 		return nil, err
 	}
 
-	for _, pkg := range i.file {
-		for _, file := range pkg.Files {
-
-			ast.Walk(i, file)
-
-			if i.typeSpec != nil {
-				log.Println(i.fset.Position(i.typeSpec.End()))
-			}
+	for _, fn := range i.funcs {
+		if _, ok := i.methods[fn.Name]; !ok {
+			meth := Method{Recv: i.Recv, Func: fn}
+			tmpl.Execute(i.buf, meth)
 		}
 	}
 
 	return format.Source(i.buf.Bytes())
 }
 
+func (i *Implementer) GenForPosition(p *token.Position) ([]byte, error) {
+	src, err := i.GenStubs()
+	if err != nil {
+		return nil, err
+	}
+
+	newline := []byte("\n\n")
+
+	src = bytes.Join([][]byte{newline, src, newline}, nil)
+
+	if !i.found {
+		return nil, fmt.Errorf("requested receiver not found")
+	}
+
+	if p == nil {
+		pp := i.fset.Position(i.typeDecl.End())
+		p = &pp
+	}
+
+	orig, err := ioutil.ReadFile(p.Filename)
+	if err != nil {
+		return nil, err
+	}
+
+	result := &bytes.Buffer{}
+
+	result.Write(orig[:p.Offset])
+	result.Write(src)
+	result.Write(orig[p.Offset:])
+
+	return format.Source(result.Bytes())
+}
+
 // validReceiver reports whether recv is a valid receiver expression.
-func (i *implementer) validateReceiver() error {
-	if i.recv == "" {
+func (i *Implementer) validateReceiver() error {
+	err := i.init()
+	if err != nil {
+		return err
+	}
+
+	if i.Recv == "" {
 		// The parse will parse empty receivers, but we don't want to accept them,
 		// since it won't generate a usable code snippet.
 		return fmt.Errorf("receiver was the empty string")
 	}
 	i.fset = token.NewFileSet()
 
-	var err error
-	i.file, err = parser.ParseDir(i.fset, ".", nil, 0)
+	i.file, err = parser.ParseDir(i.fset, i.Dir, nil, 0)
 
 	return err
 }
 
-func (i *implementer) init(args []string) error {
+func (i *Implementer) init() error {
 	i.buf = &bytes.Buffer{}
 	i.file = map[string]*ast.Package{}
 	i.methods = map[string]*ast.FuncDecl{}
-	if len(args) != 3 {
-		return fmt.Errorf("Wrong number of arguments. Expected 2, got [\"%s\"]", strings.Join(args, "\", \""))
+	if i.Recv == "" || i.IFace == "" {
+		return fmt.Errorf("Receiver and interface must both be specified")
 	}
 
-	i.recv, i.iface = args[1], args[2]
+	if i.Dir == "" {
+		i.Dir = "."
+	}
 
 	err := i.validateReceiver()
-
 	if err != nil {
 		return err
 	}
 
-	i.funcs, err = funcs(i.iface)
+	i.funcs, err = funcs(i.IFace)
 	if err != nil {
 		return err
+	}
+
+	return i.walk()
+}
+
+func (i *Implementer) walk() error {
+	var err error
+
+	i.recvName, err = getType(i.Recv)
+	if err != nil {
+		return err
+	}
+
+	for _, pkg := range i.file {
+		for _, file := range pkg.Files {
+			ast.Walk(i, file)
+		}
 	}
 
 	return nil

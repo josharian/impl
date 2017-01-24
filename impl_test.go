@@ -207,8 +207,9 @@ func TestValidReceiver(t *testing.T) {
 	}
 
 	for _, tt := range cases {
-		got := validReceiver(tt.recv)
-		if got != tt.want {
+		i := Implementer{Recv: tt.recv}
+		got := i.validateReceiver()
+		if got == nil && tt.want {
 			t.Errorf("validReceiver(%q)=%t want %t", tt.recv, got, tt.want)
 		}
 	}
