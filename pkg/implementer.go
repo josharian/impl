@@ -4,16 +4,23 @@ import (
 	"bytes"
 	"fmt"
 	"go/ast"
+	"go/build"
 	"go/format"
 	"go/parser"
 	"go/token"
+	"io"
 	"io/ioutil"
+
+	"golang.org/x/tools/go/buildutil"
 )
 
 // An Implementer can, for a certain directory, create and/or update
 // implementation with Go source code for a particular interface
 type Implementer struct {
 	Recv, IFace, Dir string
+
+	Ctxt  *build.Context
+	Input io.Reader
 
 	funcs []Func
 
@@ -23,7 +30,7 @@ type Implementer struct {
 
 	found bool
 
-	file map[string]*ast.Package
+	file map[string]*ast.File
 	fset *token.FileSet
 	buf  *bytes.Buffer
 }
@@ -148,20 +155,31 @@ func (i *Implementer) validateReceiver() error {
 	return nil
 }
 
+func (i *Implementer) initContext() {
+	if i.Ctxt == nil {
+		i.Ctxt = &build.Default
+	}
+
+	if i.Input != nil {
+		modified, err := buildutil.ParseOverlayArchive(i.Input)
+		if err == nil && len(modified) > 0 {
+			i.Ctxt = buildutil.OverlayContext(i.Ctxt, modified)
+		}
+	}
+}
+
 func (i *Implementer) init() error {
 	if i.buf != nil {
 		// Already initialized
 		return nil
 	}
+
+	i.initContext()
+
 	i.buf = &bytes.Buffer{}
-	i.file = map[string]*ast.Package{}
 	i.methods = map[string]*ast.FuncDecl{}
 	if i.Recv == "" || i.IFace == "" {
 		return fmt.Errorf("Receiver and interface must both be specified")
-	}
-
-	if i.Dir == "" {
-		i.Dir = "."
 	}
 
 	err := i.validateReceiver()
@@ -169,8 +187,25 @@ func (i *Implementer) init() error {
 		return err
 	}
 
+	pkg, err := i.Ctxt.ImportDir(i.Dir, 0)
+	if err != nil {
+		return err
+	}
+
 	i.fset = token.NewFileSet()
-	i.file, err = parser.ParseDir(i.fset, i.Dir, nil, 0)
+	for _, fname := range pkg.GoFiles {
+		file, err := i.Ctxt.OpenFile(fname)
+		if err != nil {
+			return err
+		}
+		defer file.Close()
+
+		astFile, err := parser.ParseFile(i.fset, fname, file, 0)
+		if err != nil {
+			return err
+		}
+		i.file[fname] = astFile
+	}
 
 	i.funcs, err = funcs(i.IFace)
 	if err != nil {
@@ -192,19 +227,17 @@ func (i *Implementer) walk() error {
 		return err
 	}
 
-	for _, pkg := range i.file {
-		for _, file := range pkg.Files {
-			if !i.found {
-				gen, _ := findTopTypeDecl(i.recvName, file)
-				if gen != nil {
-					i.found = true
-					i.typeDecl = gen
-				}
+	for _, file := range i.file {
+		if !i.found {
+			gen, _ := findTopTypeDecl(i.recvName, file)
+			if gen != nil {
+				i.found = true
+				i.typeDecl = gen
 			}
+		}
 
-			for _, meth := range getMethods(i.IFace, file) {
-				i.methods[meth.Name.Name] = meth
-			}
+		for _, meth := range getMethods(i.IFace, file) {
+			i.methods[meth.Name.Name] = meth
 		}
 	}
 

@@ -3,12 +3,9 @@ package main
 
 import (
 	"flag"
-	"fmt"
 	"go/token"
 	"log"
 	"os"
-	"strconv"
-	"strings"
 
 	impl "github.com/josharian/impl/pkg"
 )
@@ -27,38 +24,12 @@ to prevent shell globbing.
 `
 
 var (
-	update = flag.Bool("u", false, "update the file (see -p for file defaulting behavior)")
+	update = flag.Bool("u", false, "update the file in-place (see -p for file defaulting behavior)")
 	out    = flag.String("o", "", "the file to write out to. default is stdout")
 	pos    = flag.String("p", "", "the file:line[:col] to write the source code to. Default is immediately after the type definition")
+
+	modified = flag.Bool("modified", false, "if files have been modified and not saved, -modified allows consumers to pass guru's archive format on stdin to overlay the directory")
 )
-
-func getPosition(pos string) (*token.Position, error) {
-	arr := strings.Split(pos, ":")
-
-	if len(arr) < 2 {
-		return nil, fmt.Errorf("Invalid position spec")
-	}
-
-	p := token.Position{Column: 1}
-
-	p.Filename = arr[0]
-
-	line, err := strconv.Atoi(arr[1])
-	if err != nil {
-		return nil, fmt.Errorf("invalid line spec in position: %s", err)
-	}
-	p.Line = line
-
-	if len(arr) == 3 {
-		col, err := strconv.Atoi(arr[2])
-		if err != nil {
-			return nil, fmt.Errorf("invalid column spec in position: %s", err)
-		}
-		p.Column = col
-	}
-
-	return &p, nil
-}
 
 func main() {
 	flag.Parse()
@@ -66,6 +37,10 @@ func main() {
 	imp := impl.Implementer{
 		Recv:  flag.Arg(0),
 		IFace: flag.Arg(1),
+	}
+
+	if *modified {
+		imp.Input = os.Stdin
 	}
 
 	var p *token.Position
