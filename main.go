@@ -3,6 +3,7 @@ package main
 
 import (
 	"flag"
+	"io"
 	"log"
 	"os"
 
@@ -38,59 +39,56 @@ func main() {
 		IFace: flag.Arg(1),
 	}
 
-	if *modified {
-		imp.Input = os.Stdin
-	}
-
-	// If no options are specified, behave as we would have before, printing out
-	// only the generated methods (minus implemented methods)
-	if *out == "" && !*update && *pos == "" {
-		bs, err := imp.GenStubs()
-		if err != nil {
-			log.Fatal("error generating stubs:", err)
-		}
-		os.Stdout.Write(bs)
-		os.Exit(0)
-		return
-	}
-
-	bs, err := imp.GenForPosition(*pos)
-	if err != nil {
-		log.Fatal("error generating for position:", err)
-	}
-
 	if *out != "" && *update {
 		log.Fatal("Please specify only -u (update in-place) or -o (output file).")
 	}
 
-	if *out == "-" || *out == "" {
-		*out = "/dev/stdout"
+	if *modified {
+		imp.Input = os.Stdin
 	}
+
+	var bs []byte
+	var err error
+
+	mode := os.O_RDWR | os.O_CREATE
 
 	if *update {
 		p, err := imp.Position()
 		if err != nil {
 			log.Fatal(err)
 		}
+
 		*out = p.Filename
-	}
 
-	mode := os.O_RDWR | os.O_CREATE
-
-	if f, err := os.Stat(*out); err == nil {
-		if f.Mode().IsRegular() {
-			mode |= os.O_TRUNC
+		if *pos == "" {
+			*pos = p.String()
 		}
 	}
 
-	f, err := os.OpenFile(*out, mode, 0640)
-	if err != nil {
-		log.Fatal(err)
+	if *pos == "" {
+		bs, err = imp.GenStubs()
+		if err != nil {
+			log.Fatal("Error generating stubs:", err)
+		}
+	} else {
+		bs, err = imp.GenForPosition(*pos)
+		if err != nil {
+			log.Fatal("error generating for position:", err)
+		}
 	}
-	defer f.Close()
 
-	_, err = f.Write(bs)
-	if err != nil {
-		log.Fatal(err)
+	var outFile io.Writer
+
+	if *out != "" && *out != "-" {
+		f, err := os.OpenFile(*out, mode, 0640)
+		if err != nil {
+			log.Fatal(err)
+		}
+		defer f.Close()
+		outFile = f
+	} else {
+		outFile = os.Stdout
 	}
+
+	outFile.Write(bs)
 }

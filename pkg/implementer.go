@@ -86,7 +86,7 @@ func (i *Implementer) ensureOffset(p *token.Position) error {
 		return nil
 	}
 
-	f, err := i.Ctxt.OpenFile(p.Filename)
+	f, err := buildutil.OpenFile(i.Ctxt, p.Filename)
 	if err != nil {
 		return err
 	}
@@ -120,7 +120,7 @@ func (i *Implementer) getPosition(pos string) (*token.Position, error) {
 	arr := strings.Split(pos, ":")
 
 	if len(arr) < 2 {
-		return nil, fmt.Errorf("Invalid position spec")
+		return nil, fmt.Errorf("invalid position spec")
 	}
 
 	p := token.Position{Column: 1}
@@ -177,7 +177,7 @@ func (i *Implementer) GenForPosition(pos string) ([]byte, error) {
 		return nil, err
 	}
 
-	f, err := i.Ctxt.OpenFile(p.Filename)
+	f, err := buildutil.OpenFile(i.Ctxt, p.Filename)
 	if err != nil {
 		return nil, err
 	}
@@ -277,7 +277,7 @@ func (i *Implementer) init() error {
 
 	for _, fname := range pkg.GoFiles {
 		jp := path.Join(i.Dir, fname)
-		file, err := i.Ctxt.OpenFile(jp)
+		file, err := buildutil.OpenFile(i.Ctxt, jp)
 
 		if err != nil {
 			return err
