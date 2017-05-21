@@ -10,7 +10,6 @@ import (
 	"go/token"
 	"io"
 	"io/ioutil"
-	"os"
 	"path"
 	"path/filepath"
 	"strconv"
@@ -22,7 +21,10 @@ import (
 // An Implementer can, for a certain directory, create and/or update
 // implementation with Go source code for a particular interface
 type Implementer struct {
-	Recv, IFace, Dir string
+	Recv, IFace string
+
+	//Dir is the working directory to search for the receiver
+	Dir string
 
 	Ctxt  *build.Context
 	Input io.Reader
@@ -147,8 +149,6 @@ func (i *Implementer) getPosition(pos string) (*token.Position, error) {
 // the token.Position argument is nil, the generated code will be inserted
 // immediately after the receiving type's declaration.
 func (i *Implementer) GenForPosition(pos string) ([]byte, error) {
-	i.init()
-
 	src, err := i.GenStubs()
 	if err != nil {
 		return nil, err
@@ -224,6 +224,15 @@ func (i *Implementer) initContext() error {
 		}
 
 		i.Ctxt = buildutil.OverlayContext(i.Ctxt, modified)
+
+		for fname, content := range modified {
+			astFile, err := parser.ParseFile(i.fset, fname, bytes.NewReader(content), 0)
+			if err != nil {
+				return err
+			}
+
+			i.file[fname] = astFile
+		}
 	}
 
 	return nil
@@ -235,15 +244,17 @@ func (i *Implementer) init() error {
 		return nil
 	}
 
-	err := i.initContext()
-	if err != nil {
-		return err
-	}
-
+	i.fset = token.NewFileSet()
+	i.file = map[string]*ast.File{}
 	i.buf = &bytes.Buffer{}
 	i.methods = map[string]*ast.FuncDecl{}
 	if i.Recv == "" || i.IFace == "" {
 		return fmt.Errorf("Receiver and interface must both be specified")
+	}
+
+	err := i.initContext()
+	if err != nil {
+		return err
 	}
 
 	err = i.validateReceiver()
@@ -252,7 +263,7 @@ func (i *Implementer) init() error {
 	}
 
 	if i.Dir == "" || i.Dir == "." {
-		d, err := filepath.Abs(filepath.Dir(os.Args[0]))
+		d, err := filepath.Abs(".")
 		if err != nil {
 			return err
 		}
@@ -261,21 +272,19 @@ func (i *Implementer) init() error {
 
 	pkg, err := i.Ctxt.ImportDir(i.Dir, 0)
 	if err != nil {
-		return fmt.Errorf("Implementer.init() error importing directory %q: %s", i.Dir, err)
+		return err
 	}
 
-	i.fset = token.NewFileSet()
-	i.file = map[string]*ast.File{}
-
 	for _, fname := range pkg.GoFiles {
-		file, err := i.Ctxt.OpenFile(path.Join(i.Dir, fname))
+		jp := path.Join(i.Dir, fname)
+		file, err := i.Ctxt.OpenFile(jp)
 
 		if err != nil {
 			return err
 		}
 		defer file.Close()
 
-		astFile, err := parser.ParseFile(i.fset, fname, file, 0)
+		astFile, err := parser.ParseFile(i.fset, jp, file, 0)
 		if err != nil {
 			return err
 		}
