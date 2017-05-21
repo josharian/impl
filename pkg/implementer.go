@@ -59,7 +59,7 @@ func (i *Implementer) Position() (*token.Position, error) {
 func (i *Implementer) GenStubs() ([]byte, error) {
 	err := i.init()
 	if err != nil {
-		return nil, fmt.Errorf("GenStubs error init'ing implementer: %s", err)
+		return nil, fmt.Errorf("error initializing implementer: %s", err)
 	}
 
 	for _, fn := range i.funcs {
@@ -79,12 +79,18 @@ func (i *Implementer) GenStubs() ([]byte, error) {
 
 // ensureOffset will ensure that, given a file:line:col generated position, the
 // offset is correct for the file.
-func ensureOffset(p *token.Position) error {
+func (i *Implementer) ensureOffset(p *token.Position) error {
 	if p.Offset != 0 || (p.Line == 0 && p.Column == 0) {
 		return nil
 	}
 
-	bs, err := ioutil.ReadFile(p.Filename)
+	f, err := i.Ctxt.OpenFile(p.Filename)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	bs, err := ioutil.ReadAll(f)
 	if err != nil {
 		return err
 	}
@@ -141,12 +147,14 @@ func (i *Implementer) getPosition(pos string) (*token.Position, error) {
 // the token.Position argument is nil, the generated code will be inserted
 // immediately after the receiving type's declaration.
 func (i *Implementer) GenForPosition(pos string) ([]byte, error) {
-	p, err := i.getPosition(pos)
+	i.init()
+
+	src, err := i.GenStubs()
 	if err != nil {
 		return nil, err
 	}
 
-	src, err := i.GenStubs()
+	p, err := i.getPosition(pos)
 	if err != nil {
 		return nil, err
 	}
@@ -154,8 +162,6 @@ func (i *Implementer) GenForPosition(pos string) ([]byte, error) {
 	newline := []byte("\n\n")
 
 	src = bytes.Join([][]byte{newline, src, newline}, nil)
-
-	i.walk()
 
 	if !i.found {
 		return nil, fmt.Errorf("requested receiver not found: %s", i.recvName)
@@ -166,7 +172,7 @@ func (i *Implementer) GenForPosition(pos string) ([]byte, error) {
 		p = &pp
 	}
 
-	err = ensureOffset(p)
+	err = i.ensureOffset(p)
 	if err != nil {
 		return nil, err
 	}

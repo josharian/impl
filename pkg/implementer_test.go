@@ -7,7 +7,6 @@ import (
 	"go/parser"
 	"go/token"
 	"io"
-	"log"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -81,17 +80,16 @@ func TestPosition(t *testing.T) {
 	asrt := assert.New(t)
 
 	file := formatArchive(map[string]string{
-		"test.go": `package tester
+		"./test.go": `package tester
 type aa struct {}`})
 
 	i := Implementer{
 		Input: file,
-		IFace: "io.ReadWriter",
+		IFace: "io.Reader",
 		Recv:  "aa",
-		Dir:   "test",
+		Dir:   "./test",
 	}
 
-	bs, err := i.GenForPosition("./test.go:2")
+	_, err := i.GenForPosition("./test.go:2")
 	asrt.NoError(err)
-	log.Println(string(bs))
 }
