@@ -59,7 +59,7 @@ func typeSpec(path string, id string) (Pkg, *ast.TypeSpec, error) {
 
 	pkgs, err := parser.ParseDir(fset, pkg.Dir, nil, 0)
 	if err != nil {
-		return Pkg{}, nil, err
+		return Pkg{}, nil, fmt.Errorf("error parsing dir from typeSpec: %s", err)
 	}
 
 	tID, err := getType(id)

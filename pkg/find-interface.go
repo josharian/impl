@@ -39,12 +39,12 @@ func findInterface(iface string) (path string, id string, err error) {
 		return "", "", fmt.Errorf("couldn't parse interface: %s", iface)
 	}
 
-	if strings.Index(iface, ".") == -1 {
+	if !strings.Contains(iface, ".") {
 		fs := token.NewFileSet()
 
 		pkgs, err := parser.ParseDir(fs, ".", nil, 0)
 		if err != nil {
-			return "", "", err
+			return "", "", fmt.Errorf("error parsing directory '.': %s", err)
 		}
 
 		for _, pkg := range pkgs {

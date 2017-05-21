@@ -10,6 +10,11 @@ import (
 	"go/token"
 	"io"
 	"io/ioutil"
+	"os"
+	"path"
+	"path/filepath"
+	"strconv"
+	"strings"
 
 	"golang.org/x/tools/go/buildutil"
 )
@@ -54,7 +59,7 @@ func (i *Implementer) Position() (*token.Position, error) {
 func (i *Implementer) GenStubs() ([]byte, error) {
 	err := i.init()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("GenStubs error init'ing implementer: %s", err)
 	}
 
 	for _, fn := range i.funcs {
@@ -64,7 +69,12 @@ func (i *Implementer) GenStubs() ([]byte, error) {
 		}
 	}
 
-	return format.Source(i.buf.Bytes())
+	bs, err := format.Source(i.buf.Bytes())
+	if err != nil {
+		return nil, fmt.Errorf("error formatting source: %s", err)
+	}
+
+	return bs, nil
 }
 
 // ensureOffset will ensure that, given a file:line:col generated position, the
@@ -96,11 +106,46 @@ func ensureOffset(p *token.Position) error {
 	return fmt.Errorf("Could not find %s", p)
 }
 
+// getPositions takes a position identifier (file:line:char) and returns a
+// golang tokenizer position
+func (i *Implementer) getPosition(pos string) (*token.Position, error) {
+	arr := strings.Split(pos, ":")
+
+	if len(arr) < 2 {
+		return nil, fmt.Errorf("Invalid position spec")
+	}
+
+	p := token.Position{Column: 1}
+
+	p.Filename = arr[0]
+
+	line, err := strconv.Atoi(arr[1])
+	if err != nil {
+		return nil, fmt.Errorf("invalid line spec in position: %s", err)
+	}
+	p.Line = line
+
+	if len(arr) == 3 {
+		col, err := strconv.Atoi(arr[2])
+		if err != nil {
+			return nil, fmt.Errorf("invalid column spec in position: %s", err)
+		}
+		p.Column = col
+	}
+
+	return &p, nil
+}
+
 // GenForPosition allows users to have more flexible stub generation, with the
 // ability to specify exactly where the implementation should be generated. If
 // the token.Position argument is nil, the generated code will be inserted
 // immediately after the receiving type's declaration.
-func (i *Implementer) GenForPosition(p *token.Position) ([]byte, error) {
+func (i *Implementer) GenForPosition(pos string) ([]byte, error) {
+	p, err := i.getPosition(pos)
+	if err != nil {
+		return nil, err
+	}
+
 	src, err := i.GenStubs()
 	if err != nil {
 		return nil, err
@@ -126,7 +171,13 @@ func (i *Implementer) GenForPosition(p *token.Position) ([]byte, error) {
 		return nil, err
 	}
 
-	orig, err := ioutil.ReadFile(p.Filename)
+	f, err := i.Ctxt.OpenFile(p.Filename)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+
+	orig, err := ioutil.ReadAll(f)
 	if err != nil {
 		return nil, err
 	}
@@ -155,17 +206,21 @@ func (i *Implementer) validateReceiver() error {
 	return nil
 }
 
-func (i *Implementer) initContext() {
+func (i *Implementer) initContext() error {
 	if i.Ctxt == nil {
 		i.Ctxt = &build.Default
 	}
 
 	if i.Input != nil {
 		modified, err := buildutil.ParseOverlayArchive(i.Input)
-		if err == nil && len(modified) > 0 {
-			i.Ctxt = buildutil.OverlayContext(i.Ctxt, modified)
+		if err != nil {
+			return err
 		}
+
+		i.Ctxt = buildutil.OverlayContext(i.Ctxt, modified)
 	}
+
+	return nil
 }
 
 func (i *Implementer) init() error {
@@ -174,7 +229,10 @@ func (i *Implementer) init() error {
 		return nil
 	}
 
-	i.initContext()
+	err := i.initContext()
+	if err != nil {
+		return err
+	}
 
 	i.buf = &bytes.Buffer{}
 	i.methods = map[string]*ast.FuncDecl{}
@@ -182,19 +240,30 @@ func (i *Implementer) init() error {
 		return fmt.Errorf("Receiver and interface must both be specified")
 	}
 
-	err := i.validateReceiver()
+	err = i.validateReceiver()
 	if err != nil {
 		return err
+	}
+
+	if i.Dir == "" || i.Dir == "." {
+		d, err := filepath.Abs(filepath.Dir(os.Args[0]))
+		if err != nil {
+			return err
+		}
+		i.Dir = d
 	}
 
 	pkg, err := i.Ctxt.ImportDir(i.Dir, 0)
 	if err != nil {
-		return err
+		return fmt.Errorf("Implementer.init() error importing directory %q: %s", i.Dir, err)
 	}
 
 	i.fset = token.NewFileSet()
+	i.file = map[string]*ast.File{}
+
 	for _, fname := range pkg.GoFiles {
-		file, err := i.Ctxt.OpenFile(fname)
+		file, err := i.Ctxt.OpenFile(path.Join(i.Dir, fname))
+
 		if err != nil {
 			return err
 		}
