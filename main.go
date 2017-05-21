@@ -3,7 +3,6 @@ package main
 
 import (
 	"flag"
-	"go/token"
 	"log"
 	"os"
 
@@ -43,31 +42,21 @@ func main() {
 		imp.Input = os.Stdin
 	}
 
-	var p *token.Position
-
-	if *pos != "" {
-		var err error
-		p, err = getPosition(*pos)
-		if err != nil {
-			log.Fatal(err)
-		}
-	}
-
 	// If no options are specified, behave as we would have before, printing out
 	// only the generated methods (minus implemented methods)
 	if *out == "" && !*update && *pos == "" {
 		bs, err := imp.GenStubs()
 		if err != nil {
-			log.Fatal(err)
+			log.Fatal("error generating stubs:", err)
 		}
 		os.Stdout.Write(bs)
 		os.Exit(0)
 		return
 	}
 
-	bs, err := imp.GenForPosition(p)
+	bs, err := imp.GenForPosition(*pos)
 	if err != nil {
-		log.Fatal(err)
+		log.Fatal("error generating for position:", err)
 	}
 
 	if *out != "" && *update {
