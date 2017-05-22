@@ -7,7 +7,6 @@ import (
 	"go/parser"
 	"go/token"
 	"io"
-	"log"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -97,5 +96,12 @@ type aa struct {}`})
 
 	bs, err := i.GenForPosition("test.go:2")
 	asrt.NoError(err)
-	log.Println(string(bs))
+	asrt.Equal(`package tester
+
+func (aa) Test() string {
+	panic("not implemented")
+}
+
+type aa struct{}
+`, string(bs))
 }
