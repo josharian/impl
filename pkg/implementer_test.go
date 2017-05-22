@@ -61,10 +61,10 @@ func TestOverlay(t *testing.T) {
 type aa struct {}`})
 
 	i := Implementer{
-		Input: file,
-		IFace: "io.Reader",
-		Recv:  "aa",
-		Dir:   "./test",
+		Archive: file,
+		IFace:   "io.Reader",
+		Recv:    "aa",
+		Dir:     "./test",
 	}
 
 	bs, err := i.GenStubs()
@@ -77,6 +77,10 @@ type aa struct {}`})
 `)
 }
 
+type testPos interface {
+	Test() string
+}
+
 func TestPosition(t *testing.T) {
 	asrt := assert.New(t)
 
@@ -85,10 +89,10 @@ func TestPosition(t *testing.T) {
 type aa struct {}`})
 
 	i := Implementer{
-		Input: file,
-		IFace: "io.ReadWriter",
-		Recv:  "aa",
-		Dir:   "test",
+		Archive: file,
+		IFace:   "testPos",
+		Recv:    "aa",
+		Dir:     "test",
 	}
 
 	bs, err := i.GenForPosition("test.go:2")

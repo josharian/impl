@@ -44,7 +44,7 @@ func main() {
 	}
 
 	if *modified {
-		imp.Input = os.Stdin
+		imp.Archive = os.Stdin
 	}
 
 	var bs []byte

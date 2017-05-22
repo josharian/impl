@@ -1,6 +1,6 @@
 package tester
 
-// A A is a string type
+// An A is a string type
 type A string
 
 type d struct {
@@ -25,3 +25,7 @@ type b struct {
 }
 
 type a func(interface{}) bool
+
+type e interface {
+	E() string
+}

@@ -23,11 +23,14 @@ import (
 type Implementer struct {
 	Recv, IFace string
 
-	//Dir is the working directory to search for the receiver
+	// Dir is the working directory to search for the receiver
 	Dir string
 
-	Ctxt  *build.Context
-	Input io.Reader
+	Ctxt *build.Context
+
+	// Archive is an io.Reader that contains a valid buildutil.archive list of
+	// files in serialized format.
+	Archive io.Reader
 
 	funcs []Func
 
@@ -217,8 +220,8 @@ func (i *Implementer) initContext() error {
 		i.Ctxt = &build.Default
 	}
 
-	if i.Input != nil {
-		modified, err := buildutil.ParseOverlayArchive(i.Input)
+	if i.Archive != nil {
+		modified, err := buildutil.ParseOverlayArchive(i.Archive)
 		if err != nil {
 			return err
 		}
@@ -270,12 +273,18 @@ func (i *Implementer) init() error {
 		i.Dir = d
 	}
 
+	// Pick up the files on disk
 	pkg, err := i.Ctxt.ImportDir(i.Dir, 0)
 	if err != nil {
 		return err
 	}
 
 	for _, fname := range pkg.GoFiles {
+		if _, ok := i.file[fname]; ok {
+			// Don't overwrite the overlay
+			continue
+		}
+
 		jp := path.Join(i.Dir, fname)
 		file, err := buildutil.OpenFile(i.Ctxt, jp)
 
@@ -284,7 +293,7 @@ func (i *Implementer) init() error {
 		}
 		defer file.Close()
 
-		astFile, err := parser.ParseFile(i.fset, jp, file, 0)
+		astFile, err := parser.ParseFile(i.fset, fname, file, 0)
 		if err != nil {
 			return err
 		}
