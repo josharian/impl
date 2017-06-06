@@ -34,7 +34,7 @@ func TestFindInterface(t *testing.T) {
 	}
 
 	for _, tt := range cases {
-		path, id, err := findInterface(tt.iface)
+		path, id, err := findInterface(tt.iface, ".")
 		gotErr := err != nil
 		if tt.wantErr != gotErr {
 			t.Errorf("findInterface(%q).err=%v want %s", tt.iface, err, errBool(tt.wantErr))
@@ -61,7 +61,7 @@ func TestTypeSpec(t *testing.T) {
 	}
 
 	for _, tt := range cases {
-		p, spec, err := typeSpec(tt.path, tt.id)
+		p, spec, err := typeSpec(tt.path, tt.id, "")
 		gotErr := err != nil
 		if tt.wantErr != gotErr {
 			t.Errorf("typeSpec(%q, %q).err=%v want %s", tt.path, tt.id, err, errBool(tt.wantErr))
@@ -182,7 +182,7 @@ func TestFuncs(t *testing.T) {
 	}
 
 	for _, tt := range cases {
-		fns, err := funcs(tt.iface)
+		fns, err := funcs(tt.iface, "")
 		gotErr := err != nil
 		if tt.wantErr != gotErr {
 			t.Errorf("funcs(%q).err=%v want %s", tt.iface, err, errBool(tt.wantErr))
