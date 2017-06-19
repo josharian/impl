@@ -308,7 +308,7 @@ func main() {
 	}
 
 	if *flagSrcDir == "" {
-		if dir, err := os.Getwd(); err != nil {
+		if dir, err := os.Getwd(); err == nil {
 			*flagSrcDir = dir
 		}
 	}
