@@ -215,10 +215,21 @@ func (p Pkg) funcsig(f *ast.Field) Func {
 	return fn
 }
 
+// The error interface is built-in.
+var errorInterface = []Func{{
+	Name: "Error",
+	Res:  []Param{{Type: "string"}},
+}}
+
 // funcs returns the set of methods required to implement iface.
 // It is called funcs rather than methods because the
 // function descriptions are functions; there is no receiver.
 func funcs(iface string, srcDir string) ([]Func, error) {
+	// Special case for the built-in error interface.
+	if iface == "error" {
+		return errorInterface, nil
+	}
+
 	// Locate the interface.
 	path, id, err := findInterface(iface, srcDir)
 	if err != nil {

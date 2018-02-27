@@ -118,7 +118,7 @@ func TestFuncs(t *testing.T) {
 				},
 				{
 					Name:   "WriteHeader",
-					Params: []Param{{Type: "int"}},
+					Params: []Param{{Type: "int", Name: "statusCode"}},
 				},
 			},
 		},
@@ -174,6 +174,15 @@ func TestFuncs(t *testing.T) {
 						{Name: "additionalData", Type: "[]byte"},
 					},
 					Res: []Param{{Type: "[]byte"}, {Type: "error"}},
+				},
+			},
+		},
+		{
+			iface: "error",
+			want: []Func{
+				{
+					Name: "Error",
+					Res:  []Param{{Type: "string"}},
 				},
 			},
 		},
