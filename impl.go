@@ -11,6 +11,7 @@ import (
 	"go/parser"
 	"go/printer"
 	"go/token"
+	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -20,7 +21,7 @@ import (
 	"golang.org/x/tools/imports"
 )
 
-const usage = `impl [-dir directory] <recv> <iface>
+const usage = `impl [-dir directory] [-body file] <recv> <iface>
 
 impl generates method stubs for recv to implement iface.
 
@@ -29,13 +30,19 @@ Examples:
 impl 'f *File' io.Reader
 impl Murmur hash.Hash
 impl -dir $GOPATH/src/github.com/josharian/impl Murmur hash.Hash
+impl -body samples/custom-body/body.go 'f *File' io.Reader
 
 Don't forget the single quotes around the receiver type
 to prevent shell globbing.
 `
 
 var (
-	flagSrcDir = flag.String("dir", "", "package source directory, useful for vendored code")
+	flagSrcDir     = flag.String("dir", "", "package source directory, useful for vendored code")
+	flagCustomBody = flag.String("body", "", `file containing custom method body implementation for stubs.
+If no file is defined then stubs will be generated containing the default body:
+
+panic("not implemented")
+`)
 )
 
 // findInterface returns the import path and identifier of an interface.
@@ -184,6 +191,8 @@ func (p Pkg) params(field *ast.Field) []Param {
 type Method struct {
 	Recv string
 	Func
+
+	Body string
 }
 
 // Func represents a function signature.
@@ -271,7 +280,7 @@ func funcs(iface string, srcDir string) ([]Func, error) {
 const stub = "func ({{.Recv}}) {{.Name}}" +
 	"({{range .Params}}{{.Name}} {{.Type}}, {{end}})" +
 	"({{range .Res}}{{.Name}} {{.Type}}, {{end}})" +
-	"{\n" + "panic(\"not implemented\")" + "}\n\n"
+	"{\n{{.Body}}}\n\n"
 
 var tmpl = template.Must(template.New("test").Parse(stub))
 
@@ -279,10 +288,13 @@ var tmpl = template.Must(template.New("test").Parse(stub))
 // for fns using receiver expression recv.
 // If recv is not a valid receiver expression,
 // genStubs will panic.
-func genStubs(recv string, fns []Func) []byte {
+func genStubs(recv string, fns []Func, body string) []byte {
 	var buf bytes.Buffer
 	for _, fn := range fns {
-		meth := Method{Recv: recv, Func: fn}
+		meth := Method{
+			Recv: recv,
+			Func: fn,
+			Body: body}
 		tmpl.Execute(&buf, meth)
 	}
 
@@ -329,7 +341,16 @@ func main() {
 		fatal(err)
 	}
 
-	src := genStubs(recv, fns)
+	body := `panic("not implemented")`
+	if *flagCustomBody != "" {
+		buf, err := ioutil.ReadFile(*flagCustomBody)
+		if err != nil {
+			fatal(err)
+		}
+		body = string(buf)
+	}
+
+	src := genStubs(recv, fns, body)
 	fmt.Print(string(src))
 }
 

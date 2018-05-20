@@ -27,6 +27,17 @@ $ impl 's *Source' golang.org/x/oauth2.TokenSource
 func (s *Source) Token() (*oauth2.Token, error) {
     panic("not implemented")
 }
+
+# It is possible to set a custom method body.
+# This helps in cases where we would like to generate stubs that:
+# - avoid panics on runtime (even if the methods are not implemented yet)
+# - use custom loggers
+# - insert comments and annotations like TODO.
+$ impl -body samples/custom-body/body.go 'f *File' io.Reader
+func (f *File) Read(p []byte) (n int, err error) {
+	// TODO: implement this method
+	log.Printf("not implemented yet")
+}
 ```
 
 You can use `impl` from Vim with [vim-go-impl](https://github.com/rhysd/vim-go-impl)
