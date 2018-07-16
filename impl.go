@@ -11,6 +11,7 @@ import (
 	"go/parser"
 	"go/printer"
 	"go/token"
+	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -20,7 +21,7 @@ import (
 	"golang.org/x/tools/imports"
 )
 
-const usage = `impl [-dir directory] <recv> <iface>
+const usage = `impl [-dir directory] [-body file] <recv> <iface>
 
 impl generates method stubs for recv to implement iface.
 
@@ -29,13 +30,19 @@ Examples:
 impl 'f *File' io.Reader
 impl Murmur hash.Hash
 impl -dir $GOPATH/src/github.com/josharian/impl Murmur hash.Hash
+impl -body $GOPATH/src/github.com/filewalkwithme/stringsvc3/logging/impl.go 'mw *logmw' github.com/filewalkwithme/stringsvc3.StringService
 
 Don't forget the single quotes around the receiver type
 to prevent shell globbing.
 `
 
 var (
-	flagSrcDir = flag.String("dir", "", "package source directory, useful for vendored code")
+	flagSrcDir     = flag.String("dir", "", "package source directory, useful for vendored code")
+	flagCustomBody = flag.String("body", "", `file containing custom method body implementation for stubs.
+If no file is defined then stubs will be generated containing the default body:
+
+panic("not implemented")
+`)
 )
 
 // findInterface returns the import path and identifier of an interface.
@@ -182,8 +189,13 @@ func (p Pkg) params(field *ast.Field) []Param {
 
 // Method represents a method signature.
 type Method struct {
-	Recv string
+	Recv Recv
 	Func
+}
+
+type Recv struct {
+	Name string
+	Type string
 }
 
 // Func represents a function signature.
@@ -268,21 +280,26 @@ func funcs(iface string, srcDir string) ([]Func, error) {
 	return fns, nil
 }
 
-const stub = "func ({{.Recv}}) {{.Name}}" +
+const stubModel = "func ({{.Recv.Name}} {{.Recv.Type}}) {{.Name}}" +
 	"({{range .Params}}{{.Name}} {{.Type}}, {{end}})" +
 	"({{range .Res}}{{.Name}} {{.Type}}, {{end}})" +
-	"{\n" + "panic(\"not implemented\")" + "}\n\n"
+	"{\n%s}\n\n"
 
-var tmpl = template.Must(template.New("test").Parse(stub))
+var stubBody = "panic(\"not implemented\")"
 
 // genStubs prints nicely formatted method stubs
 // for fns using receiver expression recv.
 // If recv is not a valid receiver expression,
 // genStubs will panic.
 func genStubs(recv string, fns []Func) []byte {
+	var stub = fmt.Sprintf(stubModel, stubBody)
+	var tmpl = template.Must(template.New("test").Parse(stub))
+
 	var buf bytes.Buffer
 	for _, fn := range fns {
-		meth := Method{Recv: recv, Func: fn}
+		meth := Method{
+			Recv: parseRecv(recv),
+			Func: fn}
 		tmpl.Execute(&buf, meth)
 	}
 
@@ -291,6 +308,26 @@ func genStubs(recv string, fns []Func) []byte {
 		panic(err)
 	}
 	return pretty
+}
+
+// parseRecv splits the recv into Name and Type and returns a Recv struct
+// already populated
+func parseRecv(recv string) Recv {
+	s := strings.Split(recv, " ")
+	r := Recv{}
+
+	if len(s) == 1 {
+		// only type is present, i.e.:
+		// func (*File) Foo ()
+		r.Type = s[0]
+	} else if len(s) == 2 {
+		// both name and type are present, i.e:
+		// func (f *File) Foo ()
+		r.Name = s[0]
+		r.Type = s[1]
+	}
+
+	return r
 }
 
 // validReceiver reports whether recv is a valid receiver expression.
@@ -327,6 +364,14 @@ func main() {
 	fns, err := funcs(iface, *flagSrcDir)
 	if err != nil {
 		fatal(err)
+	}
+
+	if *flagCustomBody != "" {
+		buf, err := ioutil.ReadFile(*flagCustomBody)
+		if err != nil {
+			fatal(err)
+		}
+		stubBody = string(buf)
 	}
 
 	src := genStubs(recv, fns)
