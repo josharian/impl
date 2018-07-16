@@ -45,22 +45,22 @@ func (s *Source) Token() (*oauth2.Token, error) {
 #    
 #    // custom body:
 #    defer func() {
-#	{{.Recv.Name}}.logger.Log("service", "{{.Name}}", {{range $i, $e := .Params}}{{if gt $i 0}}"{{$e.Name}}", fmt.Sprintf("%+v",{{$e.Name}}), {{end}}{{end}})
-#	}();
-#	return {{.Recv.Name}}.next.{{.Name}}({{range .Params}}{{.Name}}, {{end}});
+#	     {{.Recv.Name}}.logger.Log("service", "{{.Name}}", {{range $i, $e := .Params}}"{{$e.Name}}", fmt.Sprintf("%+v",{{$e.Name}}), {{end}})
+#	 }();
+#	 return {{.Recv.Name}}.next.{{.Name}}({{range .Params}}{{.Name}}, {{end}});
 #
 #	will generate the following output:
 $ impl -body $GOPATH/src/github.com/filewalkwithme/stringsvc3/logging/impl.go 'mw *logmw' github.com/filewalkwithme/stringsvc3.StringService
 func (mw *logmw) Uppercase(text string) (string, error) {
 	defer func() {
-		mw.logger.Log("service", "Uppercase")
+		mw.logger.Log("service", "Uppercase", "text", fmt.Sprintf("%+v", text))
 	}()
 	return mw.Uppercase(text)
 }
 
 func (mw *logmw) Count(text string) int {
 	defer func() {
-		mw.logger.Log("service", "Count")
+		mw.logger.Log("service", "Count", "text", fmt.Sprintf("%+v", text))
 	}()
 	return mw.Count(text)
 }
