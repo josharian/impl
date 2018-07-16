@@ -189,10 +189,13 @@ func (p Pkg) params(field *ast.Field) []Param {
 
 // Method represents a method signature.
 type Method struct {
-	Recv string
+	Recv Recv
 	Func
+}
 
-	Body string
+type Recv struct {
+	Name string
+	Type string
 }
 
 // Func represents a function signature.
@@ -277,24 +280,26 @@ func funcs(iface string, srcDir string) ([]Func, error) {
 	return fns, nil
 }
 
-const stub = "func ({{.Recv}}) {{.Name}}" +
+const stubModel = "func ({{.Recv.Name}} {{.Recv.Type}}) {{.Name}}" +
 	"({{range .Params}}{{.Name}} {{.Type}}, {{end}})" +
 	"({{range .Res}}{{.Name}} {{.Type}}, {{end}})" +
-	"{\n{{.Body}}}\n\n"
+	"{\n%s}\n\n"
 
-var tmpl = template.Must(template.New("test").Parse(stub))
+var stubBody = "panic(\"not implemented\")"
 
 // genStubs prints nicely formatted method stubs
 // for fns using receiver expression recv.
 // If recv is not a valid receiver expression,
 // genStubs will panic.
-func genStubs(recv string, fns []Func, body string) []byte {
+func genStubs(recv string, fns []Func) []byte {
+	var stub = fmt.Sprintf(stubModel, stubBody)
+	var tmpl = template.Must(template.New("test").Parse(stub))
+
 	var buf bytes.Buffer
 	for _, fn := range fns {
 		meth := Method{
-			Recv: recv,
-			Func: fn,
-			Body: body}
+			Recv: parseRecv(recv),
+			Func: fn}
 		tmpl.Execute(&buf, meth)
 	}
 
@@ -303,6 +308,26 @@ func genStubs(recv string, fns []Func, body string) []byte {
 		panic(err)
 	}
 	return pretty
+}
+
+// parseRecv splits the recv into Name and Type and returns a Recv struct
+// already populated
+func parseRecv(recv string) Recv {
+	s := strings.Split(recv, " ")
+	r := Recv{}
+
+	if len(s) == 1 {
+		// only type is present, i.e.:
+		// func (*File) Foo ()
+		r.Type = s[0]
+	} else if len(s) == 2 {
+		// both name and type are present, i.e:
+		// func (f *File) Foo ()
+		r.Name = s[0]
+		r.Type = s[1]
+	}
+
+	return r
 }
 
 // validReceiver reports whether recv is a valid receiver expression.
@@ -341,16 +366,15 @@ func main() {
 		fatal(err)
 	}
 
-	body := `panic("not implemented")`
 	if *flagCustomBody != "" {
 		buf, err := ioutil.ReadFile(*flagCustomBody)
 		if err != nil {
 			fatal(err)
 		}
-		body = string(buf)
+		stubBody = string(buf)
 	}
 
-	src := genStubs(recv, fns, body)
+	src := genStubs(recv, fns)
 	fmt.Print(string(src))
 }
 
