@@ -30,7 +30,7 @@ Examples:
 impl 'f *File' io.Reader
 impl Murmur hash.Hash
 impl -dir $GOPATH/src/github.com/josharian/impl Murmur hash.Hash
-impl -body samples/custom-body/body.go 'f *File' io.Reader
+impl -body $GOPATH/src/github.com/filewalkwithme/stringsvc3/logging/impl.go 'mw *logmw' github.com/filewalkwithme/stringsvc3.StringService
 
 Don't forget the single quotes around the receiver type
 to prevent shell globbing.
