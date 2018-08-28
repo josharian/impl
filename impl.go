@@ -84,17 +84,23 @@ func findInterface(iface string, srcDir string) (path string, id string, err err
 		panic(err)
 	}
 	if len(f.Imports) == 0 {
-		return "", "", fmt.Errorf("unrecognized interface: %s", iface)
+		if !strings.Contains(iface, ".") {
+			path = "."
+			id = iface
+		} else {
+			return "", "", fmt.Errorf("unrecognized interface: %s", iface)
+		}
+	} else {
+		raw := f.Imports[0].Path.Value   // "io"
+		path, err = strconv.Unquote(raw) // io
+		if err != nil {
+			panic(err)
+		}
+		decl := f.Decls[1].(*ast.GenDecl)      // var i io.Reader
+		spec := decl.Specs[0].(*ast.ValueSpec) // i io.Reader
+		sel := spec.Type.(*ast.SelectorExpr)   // io.Reader
+		id = sel.Sel.Name                      // Reader
 	}
-	raw := f.Imports[0].Path.Value   // "io"
-	path, err = strconv.Unquote(raw) // io
-	if err != nil {
-		panic(err)
-	}
-	decl := f.Decls[1].(*ast.GenDecl)      // var i io.Reader
-	spec := decl.Specs[0].(*ast.ValueSpec) // i io.Reader
-	sel := spec.Type.(*ast.SelectorExpr)   // io.Reader
-	id = sel.Sel.Name                      // Reader
 	return path, id, nil
 }
 
@@ -157,7 +163,9 @@ func (p Pkg) fullType(e ast.Expr) string {
 			// the type isn't exported, there's no point trying
 			// to implement it anyway.
 			if n.IsExported() {
-				n.Name = p.Package.Name + "." + n.Name
+				if p.Package.Dir != *flagSrcDir {
+					n.Name = p.Package.Name + "." + n.Name
+				}
 			}
 		case *ast.SelectorExpr:
 			return false
