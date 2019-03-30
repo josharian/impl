@@ -70,8 +70,8 @@ func TestTypeSpec(t *testing.T) {
 			if reflect.DeepEqual(p, Pkg{}) {
 				t.Errorf("typeSpec(%q, %q).pkg=Pkg{} want non-nil", tt.path, tt.id)
 			}
-			if spec == nil {
-				t.Errorf("typeSpec(%q, %q).spec=nil want non-nil", tt.path, tt.id)
+			if reflect.DeepEqual(spec, Spec{}) {
+				t.Errorf("typeSpec(%q, %q).spec=Spec{} want non-nil", tt.path, tt.id)
 			}
 		}
 	}
@@ -79,9 +79,10 @@ func TestTypeSpec(t *testing.T) {
 
 func TestFuncs(t *testing.T) {
 	cases := []struct {
-		iface   string
-		want    []Func
-		wantErr bool
+		iface          string
+		want           []Func
+		wantErr        bool
+		ignoreComments bool
 	}{
 		{
 			iface: "io.ReadWriter",
@@ -121,6 +122,7 @@ func TestFuncs(t *testing.T) {
 					Params: []Param{{Type: "int", Name: "statusCode"}},
 				},
 			},
+			ignoreComments: true,
 		},
 		{
 			iface: "http.Handler",
@@ -176,6 +178,7 @@ func TestFuncs(t *testing.T) {
 					Res: []Param{{Type: "[]byte"}, {Type: "error"}},
 				},
 			},
+			ignoreComments: true,
 		},
 		{
 			iface: "error",
@@ -183,6 +186,44 @@ func TestFuncs(t *testing.T) {
 				{
 					Name: "Error",
 					Res:  []Param{{Type: "string"}},
+				},
+			},
+		},
+		{
+			iface: "error",
+			want: []Func{
+				{
+					Name: "Error",
+					Res:  []Param{{Type: "string"}},
+				},
+			},
+		},
+		{
+			iface: "http.Flusher",
+			want: []Func{
+				{
+					Name:     "Flush",
+					Comments: "// Flush sends any buffered data to the client.\n",
+				},
+			},
+		},
+		{
+			iface: "net.Listener",
+			want: []Func{
+				{
+					Name:     "Accept",
+					Comments: "// Accept waits for and returns the next connection to the listener.\n",
+					Res:      []Param{{Type: "net.Conn"}, {Type: "error"}},
+				},
+				{
+					Name:     "Close",
+					Comments: "// Close closes the listener.\n// Any blocked Accept operations will be unblocked and return errors.\n",
+					Res:      []Param{{Type: "error"}},
+				},
+				{
+					Name:     "Addr",
+					Comments: "// Addr returns the listener's network address.\n",
+					Res:      []Param{{Type: "net.Addr"}},
 				},
 			},
 		},
@@ -196,9 +237,25 @@ func TestFuncs(t *testing.T) {
 			t.Errorf("funcs(%q).err=%v want %s", tt.iface, err, errBool(tt.wantErr))
 			continue
 		}
-		if !reflect.DeepEqual(fns, tt.want) {
-			t.Errorf("funcs(%q).fns=\n%v\nwant\n%v\n", tt.iface, fns, tt.want)
+
+		if tt.ignoreComments {
+			if len(fns) != len(tt.want) {
+				t.Errorf("funcs(%q).fns=\n%v\nwant\n%v\n", tt.iface, fns, tt.want)
+			}
+			for i, fn := range fns {
+				if fn.Name != tt.want[i].Name ||
+					!reflect.DeepEqual(fn.Params, tt.want[i].Params) ||
+					!reflect.DeepEqual(fn.Res, tt.want[i].Res) {
+
+					t.Errorf("funcs(%q).fns=\n%v\nwant\n%v\n", tt.iface, fns, tt.want)
+				}
+			}
+		} else {
+			if !reflect.DeepEqual(fns, tt.want) {
+				t.Errorf("funcs(%q).fns=\n%v\nwant\n%v\n", tt.iface, fns, tt.want)
+			}
 		}
+
 	}
 }
 
