@@ -104,7 +104,7 @@ type Pkg struct {
 	*token.FileSet
 }
 
-// Spec is the found ast.TypeSpec with associated comment map.
+// Spec is ast.TypeSpec with the associated comment map.
 type Spec struct {
 	*ast.TypeSpec
 	ast.CommentMap
@@ -136,9 +136,8 @@ func typeSpec(path string, id string, srcDir string) (Pkg, Spec, error) {
 				if spec.Name.Name != id {
 					continue
 				}
-				cmap = cmap.Filter(decl)
 				return Pkg{Package: pkg, FileSet: fset},
-					Spec{TypeSpec: spec, CommentMap: cmap},
+					Spec{TypeSpec: spec, CommentMap: cmap.Filter(decl)},
 					nil
 			}
 		}
@@ -321,7 +320,8 @@ func validReceiver(recv string) bool {
 	return err == nil
 }
 
-// commentsBefore returns true if comments preceed the field.
+// commentsBefore returns true if comments precede the field. It returns false
+// otherwise.
 func commentsBefore(field *ast.Field, commentGroups []*ast.CommentGroup) bool {
 	if len(commentGroups) > 0 {
 		return commentGroups[0].Pos() < field.Pos()
