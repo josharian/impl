@@ -282,7 +282,7 @@ func funcs(iface string, srcDir string) ([]Func, error) {
 	return fns, nil
 }
 
-const stub = "{{if .Comments}} {{.Comments}} {{end}}" +
+const stub = "{{if .Comments}}{{.Comments}}{{end}}" +
 	"func ({{.Recv}}) {{.Name}}" +
 	"({{range .Params}}{{.Name}} {{.Type}}, {{end}})" +
 	"({{range .Res}}{{.Name}} {{.Type}}, {{end}})" +
