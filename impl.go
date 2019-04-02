@@ -136,9 +136,9 @@ func typeSpec(path string, id string, srcDir string) (Pkg, Spec, error) {
 				if spec.Name.Name != id {
 					continue
 				}
-				return Pkg{Package: pkg, FileSet: fset},
-					Spec{TypeSpec: spec, CommentMap: cmap.Filter(decl)},
-					nil
+				p := Pkg{Package: pkg, FileSet: fset}
+				s := Spec{TypeSpec: spec, CommentMap: cmap.Filter(decl)}
+				return p, s, nil
 			}
 		}
 	}
@@ -322,9 +322,9 @@ func validReceiver(recv string) bool {
 
 // commentsBefore returns true if comments precede the field. It returns false
 // otherwise.
-func commentsBefore(field *ast.Field, commentGroups []*ast.CommentGroup) bool {
-	if len(commentGroups) > 0 {
-		return commentGroups[0].Pos() < field.Pos()
+func commentsBefore(field *ast.Field, cg []*ast.CommentGroup) bool {
+	if len(cg) > 0 {
+		return cg[0].Pos() < field.Pos()
 	}
 	return false
 }
@@ -332,12 +332,12 @@ func commentsBefore(field *ast.Field, commentGroups []*ast.CommentGroup) bool {
 // flattenCommentMap flattens the comment map to a string.
 func flattenCommentMap(m ast.CommentMap) string {
 	var result strings.Builder
-	for _, cmmtgroups := range m {
-		for _, cmmtgroup := range cmmtgroups {
-			for _, cmt := range cmmtgroup.List {
-				result.WriteString(cmt.Text)
+	for _, cgs := range m {
+		for _, cg := range cgs {
+			for _, c := range cg.List {
+				result.WriteString(c.Text)
 				// add an end-of-line character if this is '//'-style comment
-				if cmt.Text[0] == '/' {
+				if c.Text[0] == '/' {
 					result.WriteString("\n")
 				}
 			}

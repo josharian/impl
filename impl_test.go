@@ -250,12 +250,12 @@ func TestFuncs(t *testing.T) {
 					t.Errorf("funcs(%q).fns=\n%v\nwant\n%v\n", tt.iface, fns, tt.want)
 				}
 			}
-		} else {
-			if !reflect.DeepEqual(fns, tt.want) {
-				t.Errorf("funcs(%q).fns=\n%v\nwant\n%v\n", tt.iface, fns, tt.want)
-			}
+			continue
 		}
-
+		// check everything including comments
+		if !reflect.DeepEqual(fns, tt.want) {
+			t.Errorf("funcs(%q).fns=\n%v\nwant\n%v\n", tt.iface, fns, tt.want)
+		}
 	}
 }
 
