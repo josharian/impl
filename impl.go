@@ -329,7 +329,8 @@ func commentsBefore(field *ast.Field, cg []*ast.CommentGroup) bool {
 	return false
 }
 
-// flattenCommentMap flattens the comment map to a string.
+// flattenCommentMap flattens the comment map to a string. This function must be
+// used at the point when m is expected to have a single element.
 func flattenCommentMap(m ast.CommentMap) string {
 	var result strings.Builder
 	for _, cgs := range m {
