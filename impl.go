@@ -329,16 +329,20 @@ func commentsBefore(field *ast.Field, cg []*ast.CommentGroup) bool {
 	return false
 }
 
-// flattenCommentMap flattens the comment map to a string. This function must be
-// used at the point when m is expected to have a single element.
+// flattenCommentMap flattens the comment map to a string.
+// This function must be used at the point when m is expected to have a single
+// element.
 func flattenCommentMap(m ast.CommentMap) string {
+	if len(m) != 1 {
+		panic("flattenCommentMap expects comment map of length 1")
+	}
 	var result strings.Builder
 	for _, cgs := range m {
 		for _, cg := range cgs {
 			for _, c := range cg.List {
 				result.WriteString(c.Text)
 				// add an end-of-line character if this is '//'-style comment
-				if c.Text[0] == '/' {
+				if c.Text[1] == '/' {
 					result.WriteString("\n")
 				}
 			}
