@@ -3,6 +3,8 @@ package main
 import (
 	"reflect"
 	"testing"
+
+	"github.com/josharian/impl/testdata"
 )
 
 type errBool bool
@@ -79,10 +81,9 @@ func TestTypeSpec(t *testing.T) {
 
 func TestFuncs(t *testing.T) {
 	cases := []struct {
-		iface          string
-		want           []Func
-		wantErr        bool
-		ignoreComments bool
+		iface   string
+		want    []Func
+		wantErr bool
 	}{
 		{
 			iface: "io.ReadWriter",
@@ -122,7 +123,6 @@ func TestFuncs(t *testing.T) {
 					Params: []Param{{Type: "int", Name: "statusCode"}},
 				},
 			},
-			ignoreComments: true,
 		},
 		{
 			iface: "http.Handler",
@@ -178,7 +178,6 @@ func TestFuncs(t *testing.T) {
 					Res: []Param{{Type: "[]byte"}, {Type: "error"}},
 				},
 			},
-			ignoreComments: true,
 		},
 		{
 			iface: "error",
@@ -211,19 +210,16 @@ func TestFuncs(t *testing.T) {
 			iface: "net.Listener",
 			want: []Func{
 				{
-					Name:     "Accept",
-					Comments: "// Accept waits for and returns the next connection to the listener.\n",
-					Res:      []Param{{Type: "net.Conn"}, {Type: "error"}},
+					Name: "Accept",
+					Res:  []Param{{Type: "net.Conn"}, {Type: "error"}},
 				},
 				{
-					Name:     "Close",
-					Comments: "// Close closes the listener.\n// Any blocked Accept operations will be unblocked and return errors.\n",
-					Res:      []Param{{Type: "error"}},
+					Name: "Close",
+					Res:  []Param{{Type: "error"}},
 				},
 				{
-					Name:     "Addr",
-					Comments: "// Addr returns the listener's network address.\n",
-					Res:      []Param{{Type: "net.Addr"}},
+					Name: "Addr",
+					Res:  []Param{{Type: "net.Addr"}},
 				},
 			},
 		},
@@ -238,24 +234,18 @@ func TestFuncs(t *testing.T) {
 			continue
 		}
 
-		if tt.ignoreComments {
-			if len(fns) != len(tt.want) {
-				t.Errorf("funcs(%q).fns=\n%v\nwant\n%v\n", tt.iface, fns, tt.want)
-			}
-			for i, fn := range fns {
-				if fn.Name != tt.want[i].Name ||
-					!reflect.DeepEqual(fn.Params, tt.want[i].Params) ||
-					!reflect.DeepEqual(fn.Res, tt.want[i].Res) {
-
-					t.Errorf("funcs(%q).fns=\n%v\nwant\n%v\n", tt.iface, fns, tt.want)
-				}
-			}
-			continue
-		}
-		// check everything including comments
-		if !reflect.DeepEqual(fns, tt.want) {
+		if len(fns) != len(tt.want) {
 			t.Errorf("funcs(%q).fns=\n%v\nwant\n%v\n", tt.iface, fns, tt.want)
 		}
+		for i, fn := range fns {
+			if fn.Name != tt.want[i].Name ||
+				!reflect.DeepEqual(fn.Params, tt.want[i].Params) ||
+				!reflect.DeepEqual(fn.Res, tt.want[i].Res) {
+
+				t.Errorf("funcs(%q).fns=\n%v\nwant\n%v\n", tt.iface, fns, tt.want)
+			}
+		}
+		continue
 	}
 }
 
@@ -276,6 +266,201 @@ func TestValidReceiver(t *testing.T) {
 		got := validReceiver(tt.recv)
 		if got != tt.want {
 			t.Errorf("validReceiver(%q)=%t want %t", tt.recv, got, tt.want)
+		}
+	}
+}
+
+func TestValidMethodComments(t *testing.T) {
+	cases := []struct {
+		iface string
+		want  []Func
+	}{
+		{
+			iface: "github.com/josharian/impl/testdata.Interface1",
+			want: []Func{
+				Func{
+					Name: "Method1",
+					Params: []Param{
+						Param{
+							Name: "arg1",
+							Type: "string",
+						}, Param{
+							Name: "arg2",
+							Type: "string",
+						}},
+					Res: []Param{
+						Param{
+							Name: "result",
+							Type: "string",
+						},
+						Param{
+							Name: "err",
+							Type: "error",
+						},
+					}, Comments: "// Method1 is the first method of Interface1.\n",
+				},
+				Func{
+					Name: "Method2",
+					Params: []Param{
+						Param{
+							Name: "arg1",
+							Type: "int",
+						},
+						Param{
+							Name: "arg2",
+							Type: "int",
+						},
+					},
+					Res: []Param{
+						Param{
+							Name: "result",
+							Type: "int",
+						},
+						Param{
+							Name: "err",
+							Type: "error",
+						},
+					},
+					Comments: "// Method2 is the second method of Interface1.\n",
+				},
+				Func{
+					Name: "Method3",
+					Params: []Param{
+						Param{
+							Name: "arg1",
+							Type: "bool",
+						},
+						Param{
+							Name: "arg2",
+							Type: "bool",
+						},
+					},
+					Res: []Param{
+						Param{
+							Name: "result",
+							Type: "bool",
+						},
+						Param{
+							Name: "err",
+							Type: "error",
+						},
+					},
+					Comments: "// Method3 is the third method of Interface1.\n",
+				},
+			},
+		},
+		{
+			iface: "github.com/josharian/impl/testdata.Interface2",
+			want: []Func{
+				Func{
+					Name: "Method1",
+					Params: []Param{
+						Param{
+							Name: "arg1",
+							Type: "int64",
+						},
+						Param{
+							Name: "arg2",
+							Type: "int64",
+						},
+					},
+					Res: []Param{
+						Param{
+							Name: "result",
+							Type: "int64",
+						},
+						Param{
+							Name: "err",
+							Type: "error",
+						},
+					},
+					Comments: "/*\n\t\tMethod1 is the first method of Interface2.\n\t*/\n",
+				},
+				Func{
+					Name: "Method2",
+					Params: []Param{
+						Param{
+							Name: "arg1",
+							Type: "float64",
+						},
+						Param{
+							Name: "arg2",
+							Type: "float64",
+						},
+					},
+					Res: []Param{
+						Param{
+							Name: "result",
+							Type: "float64",
+						},
+						Param{
+							Name: "err",
+							Type: "error",
+						},
+					},
+					Comments: "/*\n\t\tMethod2 is the second method of Interface2.\n\t*/\n",
+				},
+				Func{
+					Name: "Method3",
+					Params: []Param{
+						Param{
+							Name: "arg1",
+							Type: "interface{}",
+						},
+						Param{
+							Name: "arg2",
+							Type: "interface{}",
+						},
+					},
+					Res: []Param{
+						Param{
+							Name: "result",
+							Type: "interface{}",
+						},
+						Param{
+							Name: "err",
+							Type: "error",
+						},
+					},
+					Comments: "/*\n\t\tMethod3 is the third method of Interface2.\n\t*/\n",
+				},
+			},
+		},
+	}
+
+	for _, tt := range cases {
+		fns, err := funcs(tt.iface, ".")
+		if err != nil {
+			t.Errorf("funcs(%q).err=%v", tt.iface, err)
+		}
+		if !reflect.DeepEqual(fns, tt.want) {
+			t.Errorf("funcs(%q).fns=\n%v\nwant\n%v\n", tt.iface, fns, tt.want)
+		}
+	}
+}
+
+func TestStubGeneration(t *testing.T) {
+	cases := []struct {
+		iface string
+		want  string
+	}{
+		{
+			iface: "github.com/josharian/impl/testdata.Interface1",
+			want:  testdata.Interface1Output,
+		},
+		{
+			iface: "github.com/josharian/impl/testdata.Interface2",
+			want:  testdata.Interface2Output,
+		},
+	}
+	for _, tt := range cases {
+		fns, err := funcs(tt.iface, ".")
+		if err != nil {
+			t.Errorf("funcs(%q).err=%v", tt.iface, err)
+		}
+		src := genStubs("r *Receiver", fns)
+		if string(src) != tt.want {
+			t.Errorf("genStubs(\"r *Receiver\", %+#v).src=\n%s\nwant\n%s\n", fns, string(src), tt.want)
 		}
 	}
 }
