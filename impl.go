@@ -348,6 +348,13 @@ func flattenCommentMap(m ast.CommentMap) string {
 			}
 		}
 	}
+
+	// for '/*'-style comments, make sure to append EOL character to the comment
+	// block
+	if s := result.String(); strings.HasSuffix(s, "*/") {
+		result.WriteString("\n")
+	}
+
 	return result.String()
 }
 
