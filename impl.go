@@ -104,19 +104,27 @@ type Pkg struct {
 	*token.FileSet
 }
 
+// Spec is ast.TypeSpec with the associated comment map.
+type Spec struct {
+	*ast.TypeSpec
+	ast.CommentMap
+}
+
 // typeSpec locates the *ast.TypeSpec for type id in the import path.
-func typeSpec(path string, id string, srcDir string) (Pkg, *ast.TypeSpec, error) {
+func typeSpec(path string, id string, srcDir string) (Pkg, Spec, error) {
 	pkg, err := build.Import(path, srcDir, 0)
 	if err != nil {
-		return Pkg{}, nil, fmt.Errorf("couldn't find package %s: %v", path, err)
+		return Pkg{}, Spec{}, fmt.Errorf("couldn't find package %s: %v", path, err)
 	}
 
 	fset := token.NewFileSet() // share one fset across the whole package
 	for _, file := range pkg.GoFiles {
-		f, err := parser.ParseFile(fset, filepath.Join(pkg.Dir, file), nil, 0)
+		f, err := parser.ParseFile(fset, filepath.Join(pkg.Dir, file), nil, parser.ParseComments)
 		if err != nil {
 			continue
 		}
+
+		cmap := ast.NewCommentMap(fset, f, f.Comments)
 
 		for _, decl := range f.Decls {
 			decl, ok := decl.(*ast.GenDecl)
@@ -128,11 +136,13 @@ func typeSpec(path string, id string, srcDir string) (Pkg, *ast.TypeSpec, error)
 				if spec.Name.Name != id {
 					continue
 				}
-				return Pkg{Package: pkg, FileSet: fset}, spec, nil
+				p := Pkg{Package: pkg, FileSet: fset}
+				s := Spec{TypeSpec: spec, CommentMap: cmap.Filter(decl)}
+				return p, s, nil
 			}
 		}
 	}
-	return Pkg{}, nil, fmt.Errorf("type %s not found in %s", id, path)
+	return Pkg{}, Spec{}, fmt.Errorf("type %s not found in %s", id, path)
 }
 
 // gofmt pretty-prints e.
@@ -188,9 +198,10 @@ type Method struct {
 
 // Func represents a function signature.
 type Func struct {
-	Name   string
-	Params []Param
-	Res    []Param
+	Name     string
+	Params   []Param
+	Res      []Param
+	Comments string
 }
 
 // Param represents a parameter in a function or method signature.
@@ -199,7 +210,7 @@ type Param struct {
 	Type string
 }
 
-func (p Pkg) funcsig(f *ast.Field) Func {
+func (p Pkg) funcsig(f *ast.Field, cmap ast.CommentMap) Func {
 	fn := Func{Name: f.Names[0].Name}
 	typ := f.Type.(*ast.FuncType)
 	if typ.Params != nil {
@@ -211,6 +222,9 @@ func (p Pkg) funcsig(f *ast.Field) Func {
 		for _, field := range typ.Results.List {
 			fn.Res = append(fn.Res, p.params(field)...)
 		}
+	}
+	if commentsBefore(f, cmap.Comments()) {
+		fn.Comments = flattenCommentMap(cmap)
 	}
 	return fn
 }
@@ -262,13 +276,14 @@ func funcs(iface string, srcDir string) ([]Func, error) {
 			continue
 		}
 
-		fn := p.funcsig(fndecl)
+		fn := p.funcsig(fndecl, spec.CommentMap.Filter(fndecl))
 		fns = append(fns, fn)
 	}
 	return fns, nil
 }
 
-const stub = "func ({{.Recv}}) {{.Name}}" +
+const stub = "{{if .Comments}}{{.Comments}}{{end}}" +
+	"func ({{.Recv}}) {{.Name}}" +
 	"({{range .Params}}{{.Name}} {{.Type}}, {{end}})" +
 	"({{range .Res}}{{.Name}} {{.Type}}, {{end}})" +
 	"{\n" + "panic(\"not implemented\")" + "}\n\n"
@@ -303,6 +318,43 @@ func validReceiver(recv string) bool {
 	fset := token.NewFileSet()
 	_, err := parser.ParseFile(fset, "", "package hack\nfunc ("+recv+") Foo()", 0)
 	return err == nil
+}
+
+// commentsBefore reports whether commentGroups precedes a field.
+func commentsBefore(field *ast.Field, cg []*ast.CommentGroup) bool {
+	if len(cg) > 0 {
+		return cg[0].Pos() < field.Pos()
+	}
+	return false
+}
+
+// flattenCommentMap flattens the comment map to a string.
+// This function must be used at the point when m is expected to have a single
+// element.
+func flattenCommentMap(m ast.CommentMap) string {
+	if len(m) != 1 {
+		panic("flattenCommentMap expects comment map of length 1")
+	}
+	var result strings.Builder
+	for _, cgs := range m {
+		for _, cg := range cgs {
+			for _, c := range cg.List {
+				result.WriteString(c.Text)
+				// add an end-of-line character if this is '//'-style comment
+				if c.Text[1] == '/' {
+					result.WriteString("\n")
+				}
+			}
+		}
+	}
+
+	// for '/*'-style comments, make sure to append EOL character to the comment
+	// block
+	if s := result.String(); !strings.HasSuffix(s, "\n") {
+		result.WriteString("\n")
+	}
+
+	return result.String()
 }
 
 func main() {
