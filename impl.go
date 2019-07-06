@@ -320,8 +320,7 @@ func validReceiver(recv string) bool {
 	return err == nil
 }
 
-// commentsBefore returns true if comments precede the field. It returns false
-// otherwise.
+// commentsBefore reports whether commentGroups precedes a field.
 func commentsBefore(field *ast.Field, cg []*ast.CommentGroup) bool {
 	if len(cg) > 0 {
 		return cg[0].Pos() < field.Pos()
@@ -351,7 +350,7 @@ func flattenCommentMap(m ast.CommentMap) string {
 
 	// for '/*'-style comments, make sure to append EOL character to the comment
 	// block
-	if s := result.String(); strings.HasSuffix(s, "*/") {
+	if s := result.String(); !strings.HasSuffix(s, "\n") {
 		result.WriteString("\n")
 	}
 
