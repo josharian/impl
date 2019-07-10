@@ -115,7 +115,7 @@ func TestFuncs(t *testing.T) {
 				},
 				{
 					Name:   "Write",
-					Params: []Param{{Type: "[]byte"}},
+					Params: []Param{{Name: "_", Type: "[]byte"}},
 					Res:    []Param{{Type: "int"}, {Type: "error"}},
 				},
 				{
@@ -128,8 +128,11 @@ func TestFuncs(t *testing.T) {
 			iface: "http.Handler",
 			want: []Func{
 				{
-					Name:   "ServeHTTP",
-					Params: []Param{{Type: "http.ResponseWriter"}, {Type: "*http.Request"}},
+					Name: "ServeHTTP",
+					Params: []Param{
+						{Name: "_", Type: "http.ResponseWriter"},
+						{Name: "_", Type: "*http.Request"},
+					},
 				},
 			},
 		},
@@ -426,6 +429,80 @@ func TestValidMethodComments(t *testing.T) {
 				},
 			},
 		},
+		{
+			iface: "github.com/josharian/impl/testdata.Interface3",
+			want: []Func{
+				Func{
+					Name: "Method1",
+					Params: []Param{
+						Param{
+							Name: "_",
+							Type: "string",
+						}, Param{
+							Name: "_",
+							Type: "string",
+						}},
+					Res: []Param{
+						Param{
+							Name: "",
+							Type: "string",
+						},
+						Param{
+							Name: "",
+							Type: "error",
+						},
+					}, Comments: "// Method1 is the first method of Interface3.\n",
+				},
+				Func{
+					Name: "Method2",
+					Params: []Param{
+						Param{
+							Name: "_",
+							Type: "int",
+						},
+						Param{
+							Name: "arg2",
+							Type: "int",
+						},
+					},
+					Res: []Param{
+						Param{
+							Name: "_",
+							Type: "int",
+						},
+						Param{
+							Name: "err",
+							Type: "error",
+						},
+					},
+					Comments: "// Method2 is the second method of Interface3.\n",
+				},
+				Func{
+					Name: "Method3",
+					Params: []Param{
+						Param{
+							Name: "arg1",
+							Type: "bool",
+						},
+						Param{
+							Name: "arg2",
+							Type: "bool",
+						},
+					},
+					Res: []Param{
+						Param{
+							Name: "result1",
+							Type: "bool",
+						},
+						Param{
+							Name: "result2",
+							Type: "bool",
+						},
+					},
+					Comments: "// Method3 is the third method of Interface3.\n",
+				},
+			},
+		},
 	}
 
 	for _, tt := range cases {
@@ -451,6 +528,10 @@ func TestStubGeneration(t *testing.T) {
 		{
 			iface: "github.com/josharian/impl/testdata.Interface2",
 			want:  testdata.Interface2Output,
+		},
+		{
+			iface: "github.com/josharian/impl/testdata.Interface3",
+			want:  testdata.Interface3Output,
 		},
 	}
 	for _, tt := range cases {
