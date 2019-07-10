@@ -215,7 +215,14 @@ func (p Pkg) funcsig(f *ast.Field, cmap ast.CommentMap) Func {
 	typ := f.Type.(*ast.FuncType)
 	if typ.Params != nil {
 		for _, field := range typ.Params.List {
-			fn.Params = append(fn.Params, p.params(field)...)
+			for _, param := range p.params(field) {
+				// only for method parameters:
+				// assign a blank identifier "_" to an anonymous parameter
+				if param.Name == "" {
+					param.Name = "_"
+				}
+				fn.Params = append(fn.Params, param)
+			}
 		}
 	}
 	if typ.Results != nil {
