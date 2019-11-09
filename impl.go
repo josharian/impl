@@ -293,7 +293,7 @@ const stub = "{{if .Comments}}{{.Comments}}{{end}}" +
 	"func ({{.Recv}}) {{.Name}}" +
 	"({{range .Params}}{{.Name}} {{.Type}}, {{end}})" +
 	"({{range .Res}}{{.Name}} {{.Type}}, {{end}})" +
-	"{\n" + "panic(\"not implemented\")" + "}\n\n"
+	"{\n" + "panic(\"not implemented\") // TODO: Implement" + "}\n\n"
 
 var tmpl = template.Must(template.New("test").Parse(stub))
 
