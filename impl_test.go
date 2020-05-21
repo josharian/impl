@@ -539,9 +539,35 @@ func TestStubGeneration(t *testing.T) {
 		if err != nil {
 			t.Errorf("funcs(%q).err=%v", tt.iface, err)
 		}
-		src := genStubs("r *Receiver", fns)
+		src := genStubs("r *Receiver", fns, nil)
 		if string(src) != tt.want {
 			t.Errorf("genStubs(\"r *Receiver\", %+#v).src=\n%s\nwant\n%s\n", fns, string(src), tt.want)
+		}
+	}
+}
+
+func TestStubGenerationForImplemented(t *testing.T) {
+	cases := []struct {
+		iface string
+		want  string
+	}{
+		{
+			iface: "github.com/josharian/impl/testdata.Interface3",
+			want:  testdata.Interface4Output,
+		},
+	}
+	for _, tt := range cases {
+		fns, err := funcs(tt.iface, ".")
+		if err != nil {
+			t.Errorf("funcs(%q).err=%v", tt.iface, err)
+		}
+		ifns, err := ifuncs(fns, "Implemented", "testdata")
+		if err != nil {
+			t.Errorf("ifuncs.err=%v", err)
+		}
+		src := genStubs("r *Implemented", fns, ifns)
+		if string(src) != tt.want {
+			t.Errorf("genStubs(\"r *Implemented\", %+#v).src=\n\n%s\n\nwant\n\n%s\n\n", fns, string(src), tt.want)
 		}
 	}
 }
