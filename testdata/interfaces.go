@@ -52,17 +52,17 @@ type Interface3 interface {
 // Interface1, provided that the receiver is equal to 'r *Receiver'.
 var Interface1Output = `// Method1 is the first method of Interface1.
 func (r *Receiver) Method1(arg1 string, arg2 string) (result string, err error) {
-	panic("not implemented")
+	panic("not implemented") // TODO: Implement
 }
 
 // Method2 is the second method of Interface1.
 func (r *Receiver) Method2(arg1 int, arg2 int) (result int, err error) {
-	panic("not implemented")
+	panic("not implemented") // TODO: Implement
 }
 
 // Method3 is the third method of Interface1.
 func (r *Receiver) Method3(arg1 bool, arg2 bool) (result bool, err error) {
-	panic("not implemented")
+	panic("not implemented") // TODO: Implement
 }
 
 `
@@ -73,21 +73,21 @@ var Interface2Output = `/*
 	Method1 is the first method of Interface2.
 */
 func (r *Receiver) Method1(arg1 int64, arg2 int64) (result int64, err error) {
-	panic("not implemented")
+	panic("not implemented") // TODO: Implement
 }
 
 /*
 	Method2 is the second method of Interface2.
 */
 func (r *Receiver) Method2(arg1 float64, arg2 float64) (result float64, err error) {
-	panic("not implemented")
+	panic("not implemented") // TODO: Implement
 }
 
 /*
 	Method3 is the third method of Interface2.
 */
 func (r *Receiver) Method3(arg1 interface{}, arg2 interface{}) (result interface{}, err error) {
-	panic("not implemented")
+	panic("not implemented") // TODO: Implement
 }
 
 `
@@ -96,17 +96,17 @@ func (r *Receiver) Method3(arg1 interface{}, arg2 interface{}) (result interface
 // Interface3, provided that the receiver is equal to 'r *Receiver'.
 var Interface3Output = `// Method1 is the first method of Interface3.
 func (r *Receiver) Method1(_ string, _ string) (string, error) {
-	panic("not implemented")
+	panic("not implemented") // TODO: Implement
 }
 
 // Method2 is the second method of Interface3.
 func (r *Receiver) Method2(_ int, arg2 int) (_ int, err error) {
-	panic("not implemented")
+	panic("not implemented") // TODO: Implement
 }
 
 // Method3 is the third method of Interface3.
 func (r *Receiver) Method3(arg1 bool, arg2 bool) (result1 bool, result2 bool) {
-	panic("not implemented")
+	panic("not implemented") // TODO: Implement
 }
 
 `
