@@ -301,9 +301,14 @@ var tmpl = template.Must(template.New("test").Parse(stub))
 // for fns using receiver expression recv.
 // If recv is not a valid receiver expression,
 // genStubs will panic.
-func genStubs(recv string, fns []Func) []byte {
+// FEATURE: genStubs won't generate stubs for
+// already implemented methods of receiver.
+func genStubs(recv string, fns []Func, ifns []Func) []byte {
 	var buf bytes.Buffer
 	for _, fn := range fns {
+		if implemented(ifns, fn.Name) {
+			continue
+		}
 		meth := Method{Recv: recv, Func: fn}
 		tmpl.Execute(&buf, meth)
 	}
@@ -388,7 +393,31 @@ func main() {
 		fatal(err)
 	}
 
-	src := genStubs(recv, fns)
+	// determine title of reciever type
+	var typeTitle string
+
+	parts := strings.Split(recv, " ")
+	switch len(parts) {
+	case 1:
+		typeTitle = parts[0]
+	case 2:
+		typeTitle = parts[1]
+	default:
+		fatal(fmt.Sprintf("invalid receiver: %q", recv))
+	}
+
+	// VSCode adds a trailing space to receiver, so we must remove it.
+	// And pointer to receiver should be removed for comparison purpose.
+	// But don't worry definition of default receiver won't be changed.
+	typeTitle = strings.TrimSpace(strings.TrimPrefix(typeTitle, "*"))
+
+	// Get list of already implemented funcs
+	ifns, err := ifuncs(fns, typeTitle, *flagSrcDir)
+	if err != nil {
+		fatal(err)
+	}
+
+	src := genStubs(recv, fns, ifns)
 	fmt.Print(string(src))
 }
 

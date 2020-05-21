@@ -110,3 +110,23 @@ func (r *Receiver) Method3(arg1 bool, arg2 bool) (result1 bool, result2 bool) {
 }
 
 `
+
+type Implemented struct{}
+
+func (r *Implemented) Method1(arg1 string, arg2 string) (result string, err error) {
+	return "", nil
+}
+
+// Interface4Output is the expected output generated from reflecting on
+// Interface3, provided that the receiver is equal to 'r *Implemented'.
+var Interface4Output = `// Method2 is the second method of Interface3.
+func (r *Implemented) Method2(_ int, arg2 int) (_ int, err error) {
+	panic("not implemented") // TODO: Implement
+}
+
+// Method3 is the third method of Interface3.
+func (r *Implemented) Method3(arg1 bool, arg2 bool) (result1 bool, result2 bool) {
+	panic("not implemented") // TODO: Implement
+}
+
+`
