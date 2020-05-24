@@ -118,7 +118,10 @@ func typeSpec(path string, id string, srcDir string) (Pkg, Spec, error) {
 	}
 
 	fset := token.NewFileSet() // share one fset across the whole package
-	for _, file := range pkg.GoFiles {
+	var files []string
+	files = append(files, pkg.GoFiles...)
+	files = append(files, pkg.CgoFiles...)
+	for _, file := range files {
 		f, err := parser.ParseFile(fset, filepath.Join(pkg.Dir, file), nil, parser.ParseComments)
 		if err != nil {
 			continue
