@@ -18,6 +18,7 @@ func (b errBool) String() string {
 }
 
 func TestFindInterface(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		iface   string
 		path    string
@@ -36,18 +37,21 @@ func TestFindInterface(t *testing.T) {
 	}
 
 	for _, tt := range cases {
-		path, id, err := findInterface(tt.iface, ".")
-		gotErr := err != nil
-		if tt.wantErr != gotErr {
-			t.Errorf("findInterface(%q).err=%v want %s", tt.iface, err, errBool(tt.wantErr))
-			continue
-		}
-		if tt.path != path {
-			t.Errorf("findInterface(%q).path=%q want %q", tt.iface, path, tt.path)
-		}
-		if tt.id != id {
-			t.Errorf("findInterface(%q).id=%q want %q", tt.iface, id, tt.id)
-		}
+		tt := tt
+		t.Run(tt.iface, func(t *testing.T) {
+			t.Parallel()
+			path, id, err := findInterface(tt.iface, ".")
+			gotErr := err != nil
+			if tt.wantErr != gotErr {
+				t.Fatalf("findInterface(%q).err=%v want %s", tt.iface, err, errBool(tt.wantErr))
+			}
+			if tt.path != path {
+				t.Errorf("findInterface(%q).path=%q want %q", tt.iface, path, tt.path)
+			}
+			if tt.id != id {
+				t.Errorf("findInterface(%q).id=%q want %q", tt.iface, id, tt.id)
+			}
+		})
 	}
 }
 
@@ -81,6 +85,7 @@ func TestTypeSpec(t *testing.T) {
 }
 
 func TestFuncs(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		iface   string
 		want    []Func
@@ -231,25 +236,27 @@ func TestFuncs(t *testing.T) {
 	}
 
 	for _, tt := range cases {
-		fns, err := funcs(tt.iface, "")
-		gotErr := err != nil
-		if tt.wantErr != gotErr {
-			t.Errorf("funcs(%q).err=%v want %s", tt.iface, err, errBool(tt.wantErr))
-			continue
-		}
+		tt := tt
+		t.Run(tt.iface, func(t *testing.T) {
+			t.Parallel()
+			fns, err := funcs(tt.iface, "")
+			gotErr := err != nil
+			if tt.wantErr != gotErr {
+				t.Fatalf("funcs(%q).err=%v want %s", tt.iface, err, errBool(tt.wantErr))
+			}
 
-		if len(fns) != len(tt.want) {
-			t.Errorf("funcs(%q).fns=\n%v\nwant\n%v\n", tt.iface, fns, tt.want)
-		}
-		for i, fn := range fns {
-			if fn.Name != tt.want[i].Name ||
-				!reflect.DeepEqual(fn.Params, tt.want[i].Params) ||
-				!reflect.DeepEqual(fn.Res, tt.want[i].Res) {
-
+			if len(fns) != len(tt.want) {
 				t.Errorf("funcs(%q).fns=\n%v\nwant\n%v\n", tt.iface, fns, tt.want)
 			}
-		}
-		continue
+			for i, fn := range fns {
+				if fn.Name != tt.want[i].Name ||
+					!reflect.DeepEqual(fn.Params, tt.want[i].Params) ||
+					!reflect.DeepEqual(fn.Res, tt.want[i].Res) {
+
+					t.Errorf("funcs(%q).fns=\n%v\nwant\n%v\n", tt.iface, fns, tt.want)
+				}
+			}
+		})
 	}
 }
 
