@@ -42,6 +42,12 @@ func implementedFuncs(fns []Func, recv string, srcDir string) (map[string]bool, 
 		return ""
 	}
 
+	// Convert fns to a map, to prevent accidental quadratic behavior.
+	want := make(map[string]bool)
+	for _, fn := range fns {
+		want[fn.Name] = true
+	}
+
 	// finder is a walker func which will be called for each element in the source code of package
 	// but we are interested in funcs only with receiver same to typeTitle
 	finder := func(n ast.Node) bool {
@@ -52,11 +58,9 @@ func implementedFuncs(fns []Func, recv string, srcDir string) (map[string]bool, 
 		if getReceiver(x) != recvType {
 			return true
 		}
-		for _, fn := range fns {
-			if fn.Name == x.Name.String() {
-				implemented[fn.Name] = true
-				break
-			}
+		name := x.Name.String()
+		if want[name] {
+			implemented[name] = true
 		}
 		return true
 	}
