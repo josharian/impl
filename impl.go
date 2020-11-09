@@ -83,18 +83,31 @@ func findInterface(iface string, srcDir string) (path string, id string, err err
 	if err != nil {
 		panic(err)
 	}
-	if len(f.Imports) == 0 {
+
+	qualified := strings.ContainsRune(iface, '.')
+
+	if len(f.Imports) == 0 && qualified {
 		return "", "", fmt.Errorf("unrecognized interface: %s", iface)
 	}
-	raw := f.Imports[0].Path.Value   // "io"
-	path, err = strconv.Unquote(raw) // io
-	if err != nil {
-		panic(err)
+
+	declIdx := 0
+	if qualified {
+		raw := f.Imports[0].Path.Value   // "io"
+		path, err = strconv.Unquote(raw) // io
+		if err != nil {
+			panic(err)
+		}
+		declIdx = 1
 	}
-	decl := f.Decls[1].(*ast.GenDecl)      // var i io.Reader
-	spec := decl.Specs[0].(*ast.ValueSpec) // i io.Reader
-	sel := spec.Type.(*ast.SelectorExpr)   // io.Reader
-	id = sel.Sel.Name                      // Reader
+	decl := f.Decls[declIdx].(*ast.GenDecl) // var i io.Reader
+	spec := decl.Specs[0].(*ast.ValueSpec)  // i io.Reader
+
+	switch vt := spec.Type.(type) {
+	case *ast.SelectorExpr:
+		id = vt.Sel.Name // Reader
+	case *ast.Ident:
+		id = vt.Name // Reader
+	}
 	return path, id, nil
 }
 
@@ -112,9 +125,19 @@ type Spec struct {
 
 // typeSpec locates the *ast.TypeSpec for type id in the import path.
 func typeSpec(path string, id string, srcDir string) (Pkg, Spec, error) {
-	pkg, err := build.Import(path, srcDir, 0)
-	if err != nil {
-		return Pkg{}, Spec{}, fmt.Errorf("couldn't find package %s: %v", path, err)
+	var pkg *build.Package
+	var err error
+
+	if path == "" {
+		pkg, err = build.ImportDir(srcDir, 0)
+		if err != nil {
+			return Pkg{}, Spec{}, fmt.Errorf("couldn't find package in %s: %v", srcDir, err)
+		}
+	} else {
+		pkg, err = build.Import(path, srcDir, 0)
+		if err != nil {
+			return Pkg{}, Spec{}, fmt.Errorf("couldn't find package %s: %v", path, err)
+		}
 	}
 
 	fset := token.NewFileSet() // share one fset across the whole package
