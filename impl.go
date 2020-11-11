@@ -87,7 +87,7 @@ func findInterface(iface string, srcDir string) (path string, id string, err err
 		panic(err)
 	}
 
-	qualified := strings.ContainsRune(iface, '.')
+	qualified := strings.Contains(iface, ".")
 
 	if len(f.Imports) == 0 && qualified {
 		return "", "", fmt.Errorf("unrecognized interface: %s", iface)
