@@ -533,14 +533,17 @@ func TestStubGeneration(t *testing.T) {
 		{
 			iface: "github.com/josharian/impl/testdata.Interface1",
 			want:  testdata.Interface1Output,
+			dir:   ".",
 		},
 		{
 			iface: "github.com/josharian/impl/testdata.Interface2",
 			want:  testdata.Interface2Output,
+			dir:   ".",
 		},
 		{
 			iface: "github.com/josharian/impl/testdata.Interface3",
 			want:  testdata.Interface3Output,
+			dir:   ".",
 		},
 		{
 			iface: "Interface1",
@@ -549,10 +552,6 @@ func TestStubGeneration(t *testing.T) {
 		},
 	}
 	for _, tt := range cases {
-		if tt.dir == "" {
-			tt.dir = "."
-		}
-
 		fns, err := funcs(tt.iface, tt.dir)
 		if err != nil {
 			t.Errorf("funcs(%q).err=%v", tt.iface, err)

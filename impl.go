@@ -43,6 +43,9 @@ var (
 // "net/http", "ResponseWriter".
 // If a fully qualified interface is given, such as "net/http.ResponseWriter",
 // it simply parses the input.
+// If an unqualified interface such as "UserDefinedInterface" is given, then
+// the interface definition is presumed to be in the package within srcDir and
+// findInterface returns "", "UserDefinedInterface".
 func findInterface(iface string, srcDir string) (path string, id string, err error) {
 	if len(strings.Fields(iface)) != 1 {
 		return "", "", fmt.Errorf("couldn't parse interface: %s", iface)
@@ -90,24 +93,39 @@ func findInterface(iface string, srcDir string) (path string, id string, err err
 		return "", "", fmt.Errorf("unrecognized interface: %s", iface)
 	}
 
-	declIdx := 0
-	if qualified {
-		raw := f.Imports[0].Path.Value   // "io"
-		path, err = strconv.Unquote(raw) // io
-		if err != nil {
-			panic(err)
-		}
-		declIdx = 1
-	}
-	decl := f.Decls[declIdx].(*ast.GenDecl) // var i io.Reader
-	spec := decl.Specs[0].(*ast.ValueSpec)  // i io.Reader
+	if !qualified {
+		// If !qualified, the code looks like:
+		//
+		// package hack
+		//
+		// var i Reader
+		decl := f.Decls[0].(*ast.GenDecl)      // var i io.Reader
+		spec := decl.Specs[0].(*ast.ValueSpec) // i io.Reader
+		sel := spec.Type.(*ast.Ident)
+		id = sel.Name // Reader
 
-	switch vt := spec.Type.(type) {
-	case *ast.SelectorExpr:
-		id = vt.Sel.Name // Reader
-	case *ast.Ident:
-		id = vt.Name // Reader
+		return path, id, nil
 	}
+
+	// If qualified, the code looks like:
+	//
+	// package hack
+	//
+	// import (
+	//   "io"
+	// )
+	//
+	// var i io.Reader
+	raw := f.Imports[0].Path.Value   // "io"
+	path, err = strconv.Unquote(raw) // io
+	if err != nil {
+		panic(err)
+	}
+	decl := f.Decls[1].(*ast.GenDecl)      // var i io.Reader
+	spec := decl.Specs[0].(*ast.ValueSpec) // i io.Reader
+	sel := spec.Type.(*ast.SelectorExpr)   // io.Reader
+	id = sel.Sel.Name                      // Reader
+
 	return path, id, nil
 }
 
