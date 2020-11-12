@@ -43,6 +43,9 @@ var (
 // "net/http", "ResponseWriter".
 // If a fully qualified interface is given, such as "net/http.ResponseWriter",
 // it simply parses the input.
+// If an unqualified interface such as "UserDefinedInterface" is given, then
+// the interface definition is presumed to be in the package within srcDir and
+// findInterface returns "", "UserDefinedInterface".
 func findInterface(iface string, srcDir string) (path string, id string, err error) {
 	if len(strings.Fields(iface)) != 1 {
 		return "", "", fmt.Errorf("couldn't parse interface: %s", iface)
@@ -83,9 +86,36 @@ func findInterface(iface string, srcDir string) (path string, id string, err err
 	if err != nil {
 		panic(err)
 	}
-	if len(f.Imports) == 0 {
+
+	qualified := strings.Contains(iface, ".")
+
+	if len(f.Imports) == 0 && qualified {
 		return "", "", fmt.Errorf("unrecognized interface: %s", iface)
 	}
+
+	if !qualified {
+		// If !qualified, the code looks like:
+		//
+		// package hack
+		//
+		// var i Reader
+		decl := f.Decls[0].(*ast.GenDecl)      // var i io.Reader
+		spec := decl.Specs[0].(*ast.ValueSpec) // i io.Reader
+		sel := spec.Type.(*ast.Ident)
+		id = sel.Name // Reader
+
+		return path, id, nil
+	}
+
+	// If qualified, the code looks like:
+	//
+	// package hack
+	//
+	// import (
+	//   "io"
+	// )
+	//
+	// var i io.Reader
 	raw := f.Imports[0].Path.Value   // "io"
 	path, err = strconv.Unquote(raw) // io
 	if err != nil {
@@ -95,6 +125,7 @@ func findInterface(iface string, srcDir string) (path string, id string, err err
 	spec := decl.Specs[0].(*ast.ValueSpec) // i io.Reader
 	sel := spec.Type.(*ast.SelectorExpr)   // io.Reader
 	id = sel.Sel.Name                      // Reader
+
 	return path, id, nil
 }
 
@@ -112,9 +143,19 @@ type Spec struct {
 
 // typeSpec locates the *ast.TypeSpec for type id in the import path.
 func typeSpec(path string, id string, srcDir string) (Pkg, Spec, error) {
-	pkg, err := build.Import(path, srcDir, 0)
-	if err != nil {
-		return Pkg{}, Spec{}, fmt.Errorf("couldn't find package %s: %v", path, err)
+	var pkg *build.Package
+	var err error
+
+	if path == "" {
+		pkg, err = build.ImportDir(srcDir, 0)
+		if err != nil {
+			return Pkg{}, Spec{}, fmt.Errorf("couldn't find package in %s: %v", srcDir, err)
+		}
+	} else {
+		pkg, err = build.Import(path, srcDir, 0)
+		if err != nil {
+			return Pkg{}, Spec{}, fmt.Errorf("couldn't find package %s: %v", path, err)
+		}
 	}
 
 	fset := token.NewFileSet() // share one fset across the whole package

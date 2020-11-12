@@ -528,22 +528,31 @@ func TestStubGeneration(t *testing.T) {
 	cases := []struct {
 		iface string
 		want  string
+		dir   string
 	}{
 		{
 			iface: "github.com/josharian/impl/testdata.Interface1",
 			want:  testdata.Interface1Output,
+			dir:   ".",
 		},
 		{
 			iface: "github.com/josharian/impl/testdata.Interface2",
 			want:  testdata.Interface2Output,
+			dir:   ".",
 		},
 		{
 			iface: "github.com/josharian/impl/testdata.Interface3",
 			want:  testdata.Interface3Output,
+			dir:   ".",
+		},
+		{
+			iface: "Interface1",
+			want:  testdata.Interface1Output,
+			dir:   "testdata",
 		},
 	}
 	for _, tt := range cases {
-		fns, err := funcs(tt.iface, ".")
+		fns, err := funcs(tt.iface, tt.dir)
 		if err != nil {
 			t.Errorf("funcs(%q).err=%v", tt.iface, err)
 		}
