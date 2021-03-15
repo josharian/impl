@@ -29,4 +29,5 @@ func (s *Source) Token() (*oauth2.Token, error) {
 }
 ```
 
-You can use `impl` from Vim with [vim-go-impl](https://github.com/rhysd/vim-go-impl)
+You can use `impl` from Vim with [vim-go](https://github.com/fatih/vim-go) or
+[vim-go-impl](https://github.com/rhysd/vim-go-impl)
