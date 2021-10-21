@@ -1,4 +1,3 @@
-// impl generates method stubs for implementing an interface.
 package main
 
 import (
@@ -222,16 +221,18 @@ func (p Pkg) params(field *ast.Field) []Param {
 
 // Method represents a method signature.
 type Method struct {
-	Recv string
+	Recv            string
+	RecVariableName string
 	Func
 }
 
 // Func represents a function signature.
 type Func struct {
-	Name     string
-	Params   []Param
-	Res      []Param
-	Comments string
+	Name        string
+	Params      []Param
+	Res         []Param
+	ReturnValue string
+	Comments    string
 }
 
 // Param represents a parameter in a function or method signature.
@@ -319,6 +320,65 @@ func funcs(iface string, srcDir string) ([]Func, error) {
 	return fns, nil
 }
 
+const typeField = "{{.Name}}Func " +
+	"func({{range .Params}}{{.Name}} {{.Type}}, {{end}})" +
+	"({{range .Res}}{{.Name}} {{.Type}}, {{end}})\n"
+
+var tmpl1 = template.Must(template.New("test").Parse(typeField))
+
+// genTypeDefinition prints nicely formatted mock type fields
+// If recv is not a valid receiver expression,
+// genTypeDefinition will panic.
+func genTypeDefinition(recv string, fns []Func) []byte {
+	var buf bytes.Buffer
+	mockTypeName := strings.Split(recv, " ")[1]
+	mockTypeName = strings.TrimPrefix(mockTypeName, "*")
+	buf.WriteString("type " + mockTypeName + " struct {\n")
+	for _, fn := range fns {
+		// skip function if it has an override return value
+		if fn.ReturnValue != "" {
+			continue
+		}
+
+		meth := Method{Func: fn}
+		tmpl1.Execute(&buf, meth)
+	}
+	buf.WriteString("}\n\n")
+
+	buf.WriteString(fmt.Sprintf("func New%s() *%s {\n  return &%s{}}\n\n", strings.Title(mockTypeName), mockTypeName, mockTypeName))
+
+	return buf.Bytes()
+}
+
+const methodStub = "func ({{.Recv}}) {{.Name}}" +
+	"({{range .Params}}{{.Name}} {{.Type}}, {{end}})" +
+	"({{range .Res}}{{.Name}} {{.Type}}, {{end}})" +
+	"{\n{{if .Res}}return {{end}}" + "{{.RecVariableName}}.{{.Name}}Func({{range .Params}}{{.Name}}, {{end}})" + "}\n\n"
+
+var tmpl2 = template.Must(template.New("test").Parse(methodStub))
+
+const methodStubOverride = "func ({{.Recv}}) {{.Name}}" +
+	"({{range .Params}}{{.Name}} {{.Type}}, {{end}})" +
+	"({{range .Res}}{{.Name}} {{.Type}}, {{end}})" +
+	"{\n{{if .Res}}return {{end}}" + "{{.ReturnValue}}" + "}\n\n"
+
+var tmpl2Override = template.Must(template.New("test").Parse(methodStubOverride))
+
+// genMethodStubs prints nicely formatted method stubs
+func genMethodStubs(recv string, fns []Func) []byte {
+	var buf bytes.Buffer
+	for _, fn := range fns {
+		meth := Method{Recv: recv, RecVariableName: strings.Split(recv, " ")[0], Func: fn}
+		if fn.ReturnValue != "" {
+			tmpl2Override.Execute(&buf, meth)
+		} else {
+			tmpl2.Execute(&buf, meth)
+		}
+	}
+
+	return buf.Bytes()
+}
+
 const stub = "{{if .Comments}}{{.Comments}}{{end}}" +
 	"func ({{.Recv}}) {{.Name}}" +
 	"({{range .Params}}{{.Name}} {{.Type}}, {{end}})" +
@@ -326,29 +386,6 @@ const stub = "{{if .Comments}}{{.Comments}}{{end}}" +
 	"{\n" + "panic(\"not implemented\") // TODO: Implement" + "\n}\n\n"
 
 var tmpl = template.Must(template.New("test").Parse(stub))
-
-// genStubs prints nicely formatted method stubs
-// for fns using receiver expression recv.
-// If recv is not a valid receiver expression,
-// genStubs will panic.
-// genStubs won't generate stubs for
-// already implemented methods of receiver.
-func genStubs(recv string, fns []Func, implemented map[string]bool) []byte {
-	var buf bytes.Buffer
-	for _, fn := range fns {
-		if implemented[fn.Name] {
-			continue
-		}
-		meth := Method{Recv: recv, Func: fn}
-		tmpl.Execute(&buf, meth)
-	}
-
-	pretty, err := format.Source(buf.Bytes())
-	if err != nil {
-		panic(err)
-	}
-	return pretty
-}
 
 // validReceiver reports whether recv is a valid receiver expression.
 func validReceiver(recv string) bool {
@@ -402,19 +439,18 @@ func flattenCommentMap(m ast.CommentMap) string {
 func main() {
 	flag.Usage = func() {
 		fmt.Fprint(os.Stderr, `
-impl generates method stubs for recv to implement iface.
+mockit generates a mock file that contains a mock which implements the given interface.
 
-impl [-dir directory] <recv> <iface>
+mockit [-dir directory] <recv> <iface> <packagename> [override-methods]
 
 `[1:])
 		flag.PrintDefaults()
 		fmt.Fprint(os.Stderr, `
 
 Examples:
-		
-impl 'f *File' io.Reader
-impl Murmur hash.Hash
-impl -dir $GOPATH/src/github.com/josharian/impl Murmur hash.Hash
+
+mockit 'm *mockReader' io.Reader mocks > mocks/reader_mock_gen.go
+override methods example: "InsideTx:f(ds)" "IsTx:true"
 
 Don't forget the single quotes around the receiver type
 to prevent shell globbing.
@@ -423,13 +459,25 @@ to prevent shell globbing.
 	}
 	flag.Parse()
 
-	if len(flag.Args()) < 2 {
+	if len(flag.Args()) < 3 {
 		flag.Usage()
 	}
 
-	recv, iface := flag.Arg(0), flag.Arg(1)
+	recv, iface, packageName := flag.Arg(0), flag.Arg(1), flag.Arg(2)
 	if !validReceiver(recv) {
 		fatal(fmt.Sprintf("invalid receiver: %q", recv))
+	}
+
+	argCount := flag.NArg()
+	overrideCount := argCount - 3
+	methodOverrides := make(map[string]string)
+	for i := 0; i < overrideCount; i += 1 {
+		rawOverride := flag.Arg(3 + i)
+		overrideSlice := strings.SplitN(rawOverride, ":", 2)
+		if len(overrideSlice) != 2 {
+			fatal(fmt.Sprintf("Invalid method override: %s", rawOverride))
+		}
+		methodOverrides[overrideSlice[0]] = overrideSlice[1]
 	}
 
 	if *flagSrcDir == "" {
@@ -438,19 +486,37 @@ to prevent shell globbing.
 		}
 	}
 
+	src := fmt.Sprintf("// Code generated by mockit.\n// DO NOT EDIT!\n\npackage %s\n\n", packageName)
+
 	fns, err := funcs(iface, *flagSrcDir)
 	if err != nil {
 		fatal(err)
 	}
 
-	// Get list of already implemented funcs
-	implemented, err := implementedFuncs(fns, recv, *flagSrcDir)
+	for i := range fns {
+		fns[i].ReturnValue = methodOverrides[fns[i].Name]
+		delete(methodOverrides, fns[i].Name)
+	}
+
+	if len(methodOverrides) > 0 {
+		fatal(fmt.Sprintf("Unused method overrides: %s", methodOverrides))
+	}
+
+	body := string(genTypeDefinition(recv, fns))
+	body += string(genMethodStubs(recv, fns))
+
+	// Remove package name prefix from types
+	body = strings.Replace(body, packageName+".", "", -1)
+
+	src += body
+
+	pretty, err := format.Source([]byte(src))
 	if err != nil {
+		fmt.Println(src)
 		fatal(err)
 	}
 
-	src := genStubs(recv, fns, implemented)
-	fmt.Print(string(src))
+	fmt.Print(string(pretty))
 }
 
 func fatal(msg interface{}) {
