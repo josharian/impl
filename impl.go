@@ -21,7 +21,8 @@ import (
 )
 
 var (
-	flagSrcDir = flag.String("dir", "", "package source directory, useful for vendored code")
+	flagSrcDir     = flag.String("dir", "", "package source directory, useful for vendored code")
+	flagNoComments = flag.Bool("no-comments", false, "disable copying comments from the interface")
 )
 
 // findInterface returns the import path and identifier of an interface.
@@ -240,7 +241,7 @@ type Param struct {
 	Type string
 }
 
-func (p Pkg) funcsig(f *ast.Field, cmap ast.CommentMap) Func {
+func (p Pkg) funcsig(f *ast.Field, cmap ast.CommentMap, noComments bool) Func {
 	fn := Func{Name: f.Names[0].Name}
 	typ := f.Type.(*ast.FuncType)
 	if typ.Params != nil {
@@ -260,7 +261,7 @@ func (p Pkg) funcsig(f *ast.Field, cmap ast.CommentMap) Func {
 			fn.Res = append(fn.Res, p.params(field)...)
 		}
 	}
-	if commentsBefore(f, cmap.Comments()) {
+	if commentsBefore(f, cmap.Comments()) && !noComments {
 		fn.Comments = flattenCommentMap(cmap)
 	}
 	return fn
@@ -275,7 +276,7 @@ var errorInterface = []Func{{
 // funcs returns the set of methods required to implement iface.
 // It is called funcs rather than methods because the
 // function descriptions are functions; there is no receiver.
-func funcs(iface string, srcDir string) ([]Func, error) {
+func funcs(iface string, srcDir string, noComments bool) ([]Func, error) {
 	// Special case for the built-in error interface.
 	if iface == "error" {
 		return errorInterface, nil
@@ -305,7 +306,7 @@ func funcs(iface string, srcDir string) ([]Func, error) {
 	for _, fndecl := range idecl.Methods.List {
 		if len(fndecl.Names) == 0 {
 			// Embedded interface: recurse
-			embedded, err := funcs(p.fullType(fndecl.Type), srcDir)
+			embedded, err := funcs(p.fullType(fndecl.Type), srcDir, noComments)
 			if err != nil {
 				return nil, err
 			}
@@ -313,7 +314,7 @@ func funcs(iface string, srcDir string) ([]Func, error) {
 			continue
 		}
 
-		fn := p.funcsig(fndecl, spec.CommentMap.Filter(fndecl))
+		fn := p.funcsig(fndecl, spec.CommentMap.Filter(fndecl), noComments)
 		fns = append(fns, fn)
 	}
 	return fns, nil
@@ -424,6 +425,7 @@ to prevent shell globbing.
 	flag.Parse()
 
 	if len(flag.Args()) < 2 {
+		fmt.Printf("%d\n", len(flag.Args()))
 		flag.Usage()
 	}
 
@@ -438,7 +440,7 @@ to prevent shell globbing.
 		}
 	}
 
-	fns, err := funcs(iface, *flagSrcDir)
+	fns, err := funcs(iface, *flagSrcDir, *flagNoComments)
 	if err != nil {
 		fatal(err)
 	}
