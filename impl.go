@@ -21,7 +21,8 @@ import (
 )
 
 var (
-	flagSrcDir = flag.String("dir", "", "package source directory, useful for vendored code")
+	flagSrcDir   = flag.String("dir", "", "package source directory, useful for vendored code")
+	flagComments = flag.Bool("comments", true, "include interface comments in the generated stubs")
 )
 
 // findInterface returns the import path and identifier of an interface.
@@ -240,7 +241,15 @@ type Param struct {
 	Type string
 }
 
-func (p Pkg) funcsig(f *ast.Field, cmap ast.CommentMap) Func {
+// EmitComments specifies whether comments from the interface should be preserved in the implementation.
+type EmitComments bool
+
+const (
+	WithComments    EmitComments = true
+	WithoutComments EmitComments = false
+)
+
+func (p Pkg) funcsig(f *ast.Field, cmap ast.CommentMap, comments EmitComments) Func {
 	fn := Func{Name: f.Names[0].Name}
 	typ := f.Type.(*ast.FuncType)
 	if typ.Params != nil {
@@ -260,7 +269,7 @@ func (p Pkg) funcsig(f *ast.Field, cmap ast.CommentMap) Func {
 			fn.Res = append(fn.Res, p.params(field)...)
 		}
 	}
-	if commentsBefore(f, cmap.Comments()) {
+	if commentsBefore(f, cmap.Comments()) && comments == WithComments {
 		fn.Comments = flattenCommentMap(cmap)
 	}
 	return fn
@@ -275,7 +284,7 @@ var errorInterface = []Func{{
 // funcs returns the set of methods required to implement iface.
 // It is called funcs rather than methods because the
 // function descriptions are functions; there is no receiver.
-func funcs(iface string, srcDir string) ([]Func, error) {
+func funcs(iface string, srcDir string, comments EmitComments) ([]Func, error) {
 	// Special case for the built-in error interface.
 	if iface == "error" {
 		return errorInterface, nil
@@ -305,7 +314,7 @@ func funcs(iface string, srcDir string) ([]Func, error) {
 	for _, fndecl := range idecl.Methods.List {
 		if len(fndecl.Names) == 0 {
 			// Embedded interface: recurse
-			embedded, err := funcs(p.fullType(fndecl.Type), srcDir)
+			embedded, err := funcs(p.fullType(fndecl.Type), srcDir, comments)
 			if err != nil {
 				return nil, err
 			}
@@ -313,7 +322,7 @@ func funcs(iface string, srcDir string) ([]Func, error) {
 			continue
 		}
 
-		fn := p.funcsig(fndecl, spec.CommentMap.Filter(fndecl))
+		fn := p.funcsig(fndecl, spec.CommentMap.Filter(fndecl), comments)
 		fns = append(fns, fn)
 	}
 	return fns, nil
@@ -438,7 +447,7 @@ to prevent shell globbing.
 		}
 	}
 
-	fns, err := funcs(iface, *flagSrcDir)
+	fns, err := funcs(iface, *flagSrcDir, EmitComments(*flagComments))
 	if err != nil {
 		fatal(err)
 	}

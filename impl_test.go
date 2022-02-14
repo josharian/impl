@@ -87,9 +87,10 @@ func TestTypeSpec(t *testing.T) {
 func TestFuncs(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
-		iface   string
-		want    []Func
-		wantErr bool
+		iface    string
+		comments EmitComments
+		want     []Func
+		wantErr  bool
 	}{
 		{
 			iface: "io.ReadWriter",
@@ -111,6 +112,7 @@ func TestFuncs(t *testing.T) {
 					},
 				},
 			},
+			comments: WithComments,
 		},
 		{
 			iface: "http.ResponseWriter",
@@ -129,6 +131,7 @@ func TestFuncs(t *testing.T) {
 					Params: []Param{{Type: "int", Name: "statusCode"}},
 				},
 			},
+			comments: WithComments,
 		},
 		{
 			iface: "http.Handler",
@@ -141,6 +144,7 @@ func TestFuncs(t *testing.T) {
 					},
 				},
 			},
+			comments: WithComments,
 		},
 		{
 			iface: "ast.Node",
@@ -154,6 +158,7 @@ func TestFuncs(t *testing.T) {
 					Res:  []Param{{Type: "token.Pos"}},
 				},
 			},
+			comments: WithComments,
 		},
 		{
 			iface: "cipher.AEAD",
@@ -187,6 +192,7 @@ func TestFuncs(t *testing.T) {
 					Res: []Param{{Type: "[]byte"}, {Type: "error"}},
 				},
 			},
+			comments: WithComments,
 		},
 		{
 			iface: "error",
@@ -196,6 +202,7 @@ func TestFuncs(t *testing.T) {
 					Res:  []Param{{Type: "string"}},
 				},
 			},
+			comments: WithComments,
 		},
 		{
 			iface: "error",
@@ -205,6 +212,7 @@ func TestFuncs(t *testing.T) {
 					Res:  []Param{{Type: "string"}},
 				},
 			},
+			comments: WithComments,
 		},
 		{
 			iface: "http.Flusher",
@@ -214,6 +222,16 @@ func TestFuncs(t *testing.T) {
 					Comments: "// Flush sends any buffered data to the client.\n",
 				},
 			},
+			comments: WithComments,
+		},
+		{
+			iface: "http.Flusher",
+			want: []Func{
+				{
+					Name: "Flush",
+				},
+			},
+			comments: WithoutComments,
 		},
 		{
 			iface: "net.Listener",
@@ -231,6 +249,7 @@ func TestFuncs(t *testing.T) {
 					Res:  []Param{{Type: "net.Addr"}},
 				},
 			},
+			comments: WithComments,
 		},
 		{iface: "net.Tennis", wantErr: true},
 	}
@@ -239,7 +258,7 @@ func TestFuncs(t *testing.T) {
 		tt := tt
 		t.Run(tt.iface, func(t *testing.T) {
 			t.Parallel()
-			fns, err := funcs(tt.iface, "")
+			fns, err := funcs(tt.iface, "", tt.comments)
 			gotErr := err != nil
 			if tt.wantErr != gotErr {
 				t.Fatalf("funcs(%q).err=%v want %s", tt.iface, err, errBool(tt.wantErr))
@@ -254,6 +273,9 @@ func TestFuncs(t *testing.T) {
 					!reflect.DeepEqual(fn.Res, tt.want[i].Res) {
 
 					t.Errorf("funcs(%q).fns=\n%v\nwant\n%v\n", tt.iface, fns, tt.want)
+				}
+				if tt.comments == WithoutComments && fn.Comments != "" {
+					t.Errorf("funcs(%q).comments=\n%v\nbut comments disabled", tt.iface, fns)
 				}
 			}
 		})
@@ -514,7 +536,7 @@ func TestValidMethodComments(t *testing.T) {
 	}
 
 	for _, tt := range cases {
-		fns, err := funcs(tt.iface, ".")
+		fns, err := funcs(tt.iface, ".", WithComments)
 		if err != nil {
 			t.Errorf("funcs(%q).err=%v", tt.iface, err)
 		}
@@ -552,7 +574,7 @@ func TestStubGeneration(t *testing.T) {
 		},
 	}
 	for _, tt := range cases {
-		fns, err := funcs(tt.iface, tt.dir)
+		fns, err := funcs(tt.iface, tt.dir, WithComments)
 		if err != nil {
 			t.Errorf("funcs(%q).err=%v", tt.iface, err)
 		}
@@ -591,7 +613,7 @@ func TestStubGenerationForImplemented(t *testing.T) {
 	}
 	for _, tt := range cases {
 		t.Run(tt.desc, func(t *testing.T) {
-			fns, err := funcs(tt.iface, ".")
+			fns, err := funcs(tt.iface, ".", WithComments)
 			if err != nil {
 				t.Errorf("funcs(%q).err=%v", tt.iface, err)
 			}
