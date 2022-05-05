@@ -1,7 +1,7 @@
 `impl` generates method stubs for implementing an interface.
 
 ```bash
-go install github.com/josharian/impl
+go install github.com/josharian/impl@latest
 ```
 
 Sample usage:
