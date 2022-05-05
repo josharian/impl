@@ -51,8 +51,8 @@ func findInterface(iface string, srcDir string) (path string, id string, err err
 		if dot+1 == len(iface) {
 			return "", "", fmt.Errorf("interface name cannot end with a '.' character: %s", iface)
 		}
-		// make sure iface has exactly one "." after "/" (e.g. reject net/http/httputil)
-		if strings.Count(iface[slash:], ".") != 1 {
+		// make sure iface has at least one "." after "/" (e.g. reject net/http/httputil)
+		if strings.Count(iface[slash:], ".") == 0 {
 			return "", "", fmt.Errorf("invalid interface name: %s", iface)
 		}
 		return iface[:dot], iface[dot+1:], nil

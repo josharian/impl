@@ -33,7 +33,7 @@ func TestFindInterface(t *testing.T) {
 		{iface: "a/b/c/pkg", wantErr: true},
 		{iface: "a/b/c/pkg.", wantErr: true},
 		{iface: "a/b/c/pkg.Typ", path: "a/b/c/pkg", id: "Typ"},
-		{iface: "a/b/c/pkg.Typ.Foo", wantErr: true},
+		{iface: "gopkg.in/yaml.v2.Unmarshaler", path: "gopkg.in/yaml.v2", id: "Unmarshaler"},
 	}
 
 	for _, tt := range cases {
