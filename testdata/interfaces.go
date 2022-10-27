@@ -130,3 +130,26 @@ func (r *Implemented) Method3(arg1 bool, arg2 bool) (result1 bool, result2 bool)
 }
 
 `
+
+type Struct5 struct {
+}
+
+type Interface5 interface {
+	// Method is the first method of Interface5.
+	Method2(arg1 string, arg2 Interface2, arg3 Struct5) (Interface3, error)
+}
+
+var Interface5Output = `// Method is the first method of Interface5.
+func (r *Implemented) Method2(arg1 string, arg2 Interface2, arg3 Struct5) (Interface3, error) {
+	panic("not implemented") // TODO: Implement
+}
+
+`
+
+// Interface6Output receiver not in current package
+var Interface6Output = `// Method is the first method of Interface5.
+func (r *Implemented) Method2(arg1 string, arg2 testdata.Interface2, arg3 testdata.Struct5) (testdata.Interface3, error) {
+	panic("not implemented") // TODO: Implement
+}
+
+`
