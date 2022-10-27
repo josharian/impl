@@ -130,3 +130,11 @@ func (r *Implemented) Method3(arg1 bool, arg2 bool) (result1 bool, result2 bool)
 }
 
 `
+
+type Struct4 struct {
+}
+
+type Interface4 interface {
+	// Method1 is the first method of Interface3.
+	Method1(string, Struct4) (Struct4, error)
+}

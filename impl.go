@@ -23,6 +23,7 @@ import (
 var (
 	flagSrcDir   = flag.String("dir", "", "package source directory, useful for vendored code")
 	flagComments = flag.Bool("comments", true, "include interface comments in the generated stubs")
+	flagRecvPkg  = flag.String("recvPkg", "", "package name of the receiver")
 )
 
 // findInterface returns the import path and identifier of an interface.
@@ -120,6 +121,8 @@ func findInterface(iface string, srcDir string) (path string, id string, err err
 type Pkg struct {
 	*build.Package
 	*token.FileSet
+
+	recvPkg string
 }
 
 // Spec is ast.TypeSpec with the associated comment map.
@@ -185,10 +188,11 @@ func (p Pkg) gofmt(e ast.Expr) string {
 
 // fullType returns the fully qualified type of e.
 // Examples, assuming package net/http:
-// 	fullType(int) => "int"
-// 	fullType(Handler) => "http.Handler"
-// 	fullType(io.Reader) => "io.Reader"
-// 	fullType(*Request) => "*http.Request"
+//
+//	fullType(int) => "int"
+//	fullType(Handler) => "http.Handler"
+//	fullType(io.Reader) => "io.Reader"
+//	fullType(*Request) => "*http.Request"
 func (p Pkg) fullType(e ast.Expr) string {
 	ast.Inspect(e, func(n ast.Node) bool {
 		switch n := n.(type) {
@@ -197,7 +201,7 @@ func (p Pkg) fullType(e ast.Expr) string {
 			// more accurate, but it'd be crazy expensive, and if
 			// the type isn't exported, there's no point trying
 			// to implement it anyway.
-			if n.IsExported() {
+			if n.IsExported() && !p.inWorkPkg() {
 				n.Name = p.Package.Name + "." + n.Name
 			}
 		case *ast.SelectorExpr:
@@ -206,6 +210,10 @@ func (p Pkg) fullType(e ast.Expr) string {
 		return true
 	})
 	return p.gofmt(e)
+}
+
+func (p Pkg) inWorkPkg() bool {
+	return p.recvPkg == p.Package.Name
 }
 
 func (p Pkg) params(field *ast.Field) []Param {
@@ -284,7 +292,7 @@ var errorInterface = []Func{{
 // funcs returns the set of methods required to implement iface.
 // It is called funcs rather than methods because the
 // function descriptions are functions; there is no receiver.
-func funcs(iface string, srcDir string, comments EmitComments) ([]Func, error) {
+func funcs(iface string, srcDir string, recvPkg string, comments EmitComments) ([]Func, error) {
 	// Special case for the built-in error interface.
 	if iface == "error" {
 		return errorInterface, nil
@@ -301,6 +309,10 @@ func funcs(iface string, srcDir string, comments EmitComments) ([]Func, error) {
 	if err != nil {
 		return nil, fmt.Errorf("interface %s not found: %s", iface, err)
 	}
+
+	// Set workPkg
+	p.recvPkg = recvPkg
+
 	idecl, ok := spec.Type.(*ast.InterfaceType)
 	if !ok {
 		return nil, fmt.Errorf("not an interface: %s", iface)
@@ -314,7 +326,7 @@ func funcs(iface string, srcDir string, comments EmitComments) ([]Func, error) {
 	for _, fndecl := range idecl.Methods.List {
 		if len(fndecl.Names) == 0 {
 			// Embedded interface: recurse
-			embedded, err := funcs(p.fullType(fndecl.Type), srcDir, comments)
+			embedded, err := funcs(p.fullType(fndecl.Type), srcDir, recvPkg, comments)
 			if err != nil {
 				return nil, err
 			}
@@ -447,7 +459,19 @@ to prevent shell globbing.
 		}
 	}
 
-	fns, err := funcs(iface, *flagSrcDir, EmitComments(*flagComments))
+	if *flagRecvPkg == "" {
+		//  "   s *Struct   " , receiver: Struct
+		recvs := strings.Split(strings.TrimSpace(recv), " ") // [0]:s [1]:*Struct
+		receiver := strings.TrimPrefix(recvs[len(recvs)-1], "*")
+		pkg, _, err := typeSpec("", receiver, *flagSrcDir)
+		if err == nil {
+			*flagRecvPkg = pkg.Package.Name
+		} else {
+			*flagRecvPkg = "---" // Cannot be matched with any package
+		}
+	}
+
+	fns, err := funcs(iface, *flagSrcDir, *flagRecvPkg, EmitComments(*flagComments))
 	if err != nil {
 		fatal(err)
 	}
