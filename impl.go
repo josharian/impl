@@ -292,7 +292,7 @@ var errorInterface = []Func{{
 // funcs returns the set of methods required to implement iface.
 // It is called funcs rather than methods because the
 // function descriptions are functions; there is no receiver.
-func funcs(iface string, srcDir string, recvPkg string, comments EmitComments) ([]Func, error) {
+func funcs(iface, srcDir, recvPkg string, comments EmitComments) ([]Func, error) {
 	// Special case for the built-in error interface.
 	if iface == "error" {
 		return errorInterface, nil
@@ -459,19 +459,21 @@ to prevent shell globbing.
 		}
 	}
 
-	if *flagRecvPkg == "" {
+	var recvPkg = *flagRecvPkg
+	if recvPkg == "" {
 		//  "   s *Struct   " , receiver: Struct
-		recvs := strings.Split(strings.TrimSpace(recv), " ") // [0]:s [1]:*Struct
-		receiver := strings.TrimPrefix(recvs[len(recvs)-1], "*")
+		recvs := strings.Fields(recv)
+		receiver := recvs[len(recvs)-1] // note that this correctly handles "s *Struct" and "*Struct"
+		receiver = strings.TrimPrefix(recv, "*")
 		pkg, _, err := typeSpec("", receiver, *flagSrcDir)
 		if err == nil {
-			*flagRecvPkg = pkg.Package.Name
+			recvPkg = pkg.Package.Name
 		} else {
 			*flagRecvPkg = "---" // Cannot be matched with any package
 		}
 	}
 
-	fns, err := funcs(iface, *flagSrcDir, *flagRecvPkg, EmitComments(*flagComments))
+	fns, err := funcs(iface, *flagSrcDir, recvPkg, EmitComments(*flagComments))
 	if err != nil {
 		fatal(err)
 	}
