@@ -469,7 +469,7 @@ to prevent shell globbing.
 		if err == nil {
 			recvPkg = pkg.Package.Name
 		} else {
-			*flagRecvPkg = "---" // Cannot be matched with any package
+			*flagRecvPkg = "" // Cannot be matched with any package
 		}
 	}
 
