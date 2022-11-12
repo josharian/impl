@@ -464,7 +464,7 @@ to prevent shell globbing.
 		//  "   s *Struct   " , receiver: Struct
 		recvs := strings.Fields(recv)
 		receiver := recvs[len(recvs)-1] // note that this correctly handles "s *Struct" and "*Struct"
-		receiver = strings.TrimPrefix(recv, "*")
+		receiver = strings.TrimPrefix(receiver, "*")
 		pkg, _, err := typeSpec("", receiver, *flagSrcDir)
 		if err == nil {
 			recvPkg = pkg.Package.Name
