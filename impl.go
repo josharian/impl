@@ -310,7 +310,7 @@ func funcs(iface, srcDir, recvPkg string, comments EmitComments) ([]Func, error)
 		return nil, fmt.Errorf("interface %s not found: %s", iface, err)
 	}
 
-	// Set workPkg
+	// Set recvPkg
 	p.recvPkg = recvPkg
 
 	idecl, ok := spec.Type.(*ast.InterfaceType)

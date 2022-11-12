@@ -258,7 +258,7 @@ func TestFuncs(t *testing.T) {
 		tt := tt
 		t.Run(tt.iface, func(t *testing.T) {
 			t.Parallel()
-			fns, err := funcs(tt.iface, "", tt.comments)
+			fns, err := funcs(tt.iface, "", "", tt.comments)
 			gotErr := err != nil
 			if tt.wantErr != gotErr {
 				t.Fatalf("funcs(%q).err=%v want %s", tt.iface, err, errBool(tt.wantErr))
@@ -536,7 +536,7 @@ func TestValidMethodComments(t *testing.T) {
 	}
 
 	for _, tt := range cases {
-		fns, err := funcs(tt.iface, ".", WithComments)
+		fns, err := funcs(tt.iface, ".", "", WithComments)
 		if err != nil {
 			t.Errorf("funcs(%q).err=%v", tt.iface, err)
 		}
@@ -574,46 +574,64 @@ func TestStubGeneration(t *testing.T) {
 		},
 	}
 	for _, tt := range cases {
-		fns, err := funcs(tt.iface, tt.dir, WithComments)
+		fns, err := funcs(tt.iface, tt.dir, "", WithComments)
 		if err != nil {
 			t.Errorf("funcs(%q).err=%v", tt.iface, err)
 		}
 		src := genStubs("r *Receiver", fns, nil)
 		if string(src) != tt.want {
-			t.Errorf("genStubs(\"r *Receiver\", %+#v).src=\n%s\nwant\n%s\n", fns, string(src), tt.want)
+			t.Errorf("genStubs(\"r *Receiver\", %+#v).src=\n%#v\nwant\n%#v\n", fns, string(src), tt.want)
 		}
 	}
 }
 
 func TestStubGenerationForImplemented(t *testing.T) {
 	cases := []struct {
-		desc  string
-		iface string
-		recv  string
-		want  string
+		desc    string
+		iface   string
+		recv    string
+		recvPkg string
+		want    string
 	}{
 		{
-			desc:  "without implemeted methods",
-			iface: "github.com/josharian/impl/testdata.Interface3",
-			recv:  "r *Implemented",
-			want:  testdata.Interface4Output,
+			desc:    "without implemeted methods",
+			iface:   "github.com/josharian/impl/testdata.Interface3",
+			recv:    "r *Implemented",
+			recvPkg: "testdata",
+			want:    testdata.Interface4Output,
 		},
 		{
-			desc:  "without implemeted methods with trailing space",
-			iface: "github.com/josharian/impl/testdata.Interface3",
-			recv:  "r *Implemented ",
-			want:  testdata.Interface4Output,
+			desc:    "without implemeted methods with trailing space",
+			iface:   "github.com/josharian/impl/testdata.Interface3",
+			recv:    "r *Implemented ",
+			recvPkg: "testdata",
+			want:    testdata.Interface4Output,
 		},
 		{
-			desc:  "without implemeted methods and receiver variable",
-			iface: "github.com/josharian/impl/testdata.Interface3",
-			recv:  "*Implemented",
-			want:  strings.ReplaceAll(testdata.Interface4Output, "r *Implemented", "*Implemented"),
+			desc:    "without implemeted methods and receiver variable",
+			iface:   "github.com/josharian/impl/testdata.Interface3",
+			recv:    "*Implemented",
+			recvPkg: "testdata",
+			want:    strings.ReplaceAll(testdata.Interface4Output, "r *Implemented", "*Implemented"),
+		},
+		{
+			desc:    "receiver and interface in the same package",
+			iface:   "github.com/josharian/impl/testdata.Interface5",
+			recv:    "r *Implemented",
+			recvPkg: "testdata",
+			want:    testdata.Interface5Output,
+		},
+		{
+			desc:    "receiver and interface in a different package",
+			iface:   "github.com/josharian/impl/testdata.Interface5",
+			recv:    "r *Implemented",
+			recvPkg: "test",
+			want:    testdata.Interface6Output,
 		},
 	}
 	for _, tt := range cases {
 		t.Run(tt.desc, func(t *testing.T) {
-			fns, err := funcs(tt.iface, ".", WithComments)
+			fns, err := funcs(tt.iface, ".", tt.recvPkg, WithComments)
 			if err != nil {
 				t.Errorf("funcs(%q).err=%v", tt.iface, err)
 			}
@@ -624,7 +642,7 @@ func TestStubGenerationForImplemented(t *testing.T) {
 			}
 			src := genStubs(tt.recv, fns, implemented)
 			if string(src) != tt.want {
-				t.Errorf("genStubs(\"r *Implemented\", %+#v).src=\n\n%s\n\nwant\n\n%s\n\n", fns, string(src), tt.want)
+				t.Errorf("genStubs(\"r *Implemented\", %+#v).src=\n\n%#v\n\nwant\n\n%#v\n\n", fns, string(src), tt.want)
 			}
 		})
 	}
