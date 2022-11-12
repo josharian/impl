@@ -121,7 +121,7 @@ func findInterface(iface string, srcDir string) (path string, id string, err err
 type Pkg struct {
 	*build.Package
 	*token.FileSet
-
+	// recvPkg Package name of the function receiver
 	recvPkg string
 }
 
@@ -468,8 +468,6 @@ to prevent shell globbing.
 		pkg, _, err := typeSpec("", receiver, *flagSrcDir)
 		if err == nil {
 			recvPkg = pkg.Package.Name
-		} else {
-			*flagRecvPkg = "" // Cannot be matched with any package
 		}
 	}
 
