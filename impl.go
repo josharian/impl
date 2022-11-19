@@ -201,7 +201,7 @@ func (p Pkg) fullType(e ast.Expr) string {
 			// more accurate, but it'd be crazy expensive, and if
 			// the type isn't exported, there's no point trying
 			// to implement it anyway.
-			if n.IsExported() && !p.inRecvPkg() {
+			if n.IsExported() && p.recvPkg == p.Package.Name {
 				n.Name = p.Package.Name + "." + n.Name
 			}
 		case *ast.SelectorExpr:
@@ -210,10 +210,6 @@ func (p Pkg) fullType(e ast.Expr) string {
 		return true
 	})
 	return p.gofmt(e)
-}
-
-func (p Pkg) inRecvPkg() bool {
-	return p.recvPkg == p.Package.Name
 }
 
 func (p Pkg) params(field *ast.Field) []Param {
