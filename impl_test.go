@@ -647,3 +647,45 @@ func TestStubGenerationForImplemented(t *testing.T) {
 		})
 	}
 }
+
+func TestStubGenerationForRepeatedName(t *testing.T) {
+	cases := []struct {
+		desc    string
+		iface   string
+		recv    string
+		recvPkg string
+		want    string
+	}{
+		{
+			desc:    "receiver and in.Params with the same name",
+			iface:   "github.com/josharian/impl/testdata.Interface6",
+			recv:    "arg1 *Implemented",
+			recvPkg: "testdata",
+			want:    testdata.Interface7Output,
+		},
+		{
+			desc:    "receiver and out.Params with the same name",
+			iface:   "github.com/josharian/impl/testdata.Interface6",
+			recv:    "arg3 *Implemented",
+			recvPkg: "testdata",
+			want:    testdata.Interface8Output,
+		},
+	}
+	for _, tt := range cases {
+		t.Run(tt.desc, func(t *testing.T) {
+			fns, err := funcs(tt.iface, ".", tt.recvPkg, WithComments)
+			if err != nil {
+				t.Errorf("funcs(%q).err=%v", tt.iface, err)
+			}
+
+			implemented, err := implementedFuncs(fns, tt.recv, "testdata")
+			if err != nil {
+				t.Errorf("ifuncs.err=%v", err)
+			}
+			src := genStubs(tt.recv, fns, implemented)
+			if string(src) != tt.want {
+				t.Errorf("genStubs(\"r *Implemented\", %+#v).src=\n\n%#v\n\nwant\n\n%#v\n\n", fns, string(src), tt.want)
+			}
+		})
+	}
+}

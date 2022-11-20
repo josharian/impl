@@ -349,11 +349,33 @@ var tmpl = template.Must(template.New("test").Parse(stub))
 // genStubs won't generate stubs for
 // already implemented methods of receiver.
 func genStubs(recv string, fns []Func, implemented map[string]bool) []byte {
-	var buf bytes.Buffer
+	var (
+		buf      bytes.Buffer
+		recvName string
+		recvs    = strings.Fields(recv)
+	)
+
+	if len(recv) > 1 {
+		recvName = recvs[0]
+	}
+
+	// (r *recv) Interface(r string) {} => (r *recv) Interface(_ string)
+	checkName := func(paramss ...[]Param) {
+		for _, params := range paramss {
+			for index := range params {
+				if params[index].Name == recvName {
+					params[index].Name = "_"
+				}
+			}
+		}
+	}
+
 	for _, fn := range fns {
 		if implemented[fn.Name] {
 			continue
 		}
+
+		checkName(fn.Params, fn.Res)
 		meth := Method{Recv: recv, Func: fn}
 		tmpl.Execute(&buf, meth)
 	}
