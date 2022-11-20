@@ -153,3 +153,22 @@ func (r *Implemented) Method2(arg1 string, arg2 testdata.Interface2, arg3 testda
 }
 
 `
+
+type Interface6 interface {
+	// Method is the first method of Interface6.
+	Method2(arg1 string, arg2 int) (arg3 error)
+}
+
+var Interface7Output = `// Method is the first method of Interface6.
+func (arg1 *Implemented) Method2(_ string, arg2 int) (arg3 error) {
+	panic("not implemented") // TODO: Implement
+}
+
+`
+
+var Interface8Output = `// Method is the first method of Interface6.
+func (arg3 *Implemented) Method2(arg1 string, arg2 int) (_ error) {
+	panic("not implemented") // TODO: Implement
+}
+
+`
