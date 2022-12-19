@@ -20,10 +20,11 @@ func (b errBool) String() string {
 func TestFindInterface(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
-		iface   string
-		path    string
-		id      string
-		wantErr bool
+		iface      string
+		path       string
+		id         string
+		typeParams []string
+		wantErr    bool
 	}{
 		{iface: "net.Conn", path: "net", id: "Conn"},
 		{iface: "http.ResponseWriter", path: "net/http", id: "ResponseWriter"},
@@ -34,13 +35,14 @@ func TestFindInterface(t *testing.T) {
 		{iface: "a/b/c/pkg.", wantErr: true},
 		{iface: "a/b/c/pkg.Typ", path: "a/b/c/pkg", id: "Typ"},
 		{iface: "gopkg.in/yaml.v2.Unmarshaler", path: "gopkg.in/yaml.v2", id: "Unmarshaler"},
+		{iface: "github.com/josharian/impl/testdata.GenericInterface1[string]", path: "github.com/josharian/impl/testdata", id: "GenericInterface1", typeParams: []string{"string"}},
 	}
 
 	for _, tt := range cases {
 		tt := tt
 		t.Run(tt.iface, func(t *testing.T) {
 			t.Parallel()
-			path, id, err := findInterface(tt.iface, ".")
+			path, id, typeParams, err := findInterface(tt.iface, ".")
 			gotErr := err != nil
 			if tt.wantErr != gotErr {
 				t.Fatalf("findInterface(%q).err=%v want %s", tt.iface, err, errBool(tt.wantErr))
@@ -50,6 +52,14 @@ func TestFindInterface(t *testing.T) {
 			}
 			if tt.id != id {
 				t.Errorf("findInterface(%q).id=%q want %q", tt.iface, id, tt.id)
+			}
+			if len(tt.typeParams) != len(typeParams) {
+				t.Errorf("findInterface(%q).len(typeParams)=%d want %d", tt.iface, len(typeParams), len(tt.typeParams))
+			}
+			for pos, v := range tt.typeParams {
+				if v != typeParams[pos] {
+					t.Errorf("findInterface(%q).typeParams[%d]=%q, want %q", tt.iface, pos, typeParams[pos], v)
+				}
 			}
 		})
 	}
@@ -67,7 +77,7 @@ func TestTypeSpec(t *testing.T) {
 	}
 
 	for _, tt := range cases {
-		p, spec, err := typeSpec(tt.path, tt.id, "")
+		p, spec, err := typeSpec(tt.path, tt.id, nil, "")
 		gotErr := err != nil
 		if tt.wantErr != gotErr {
 			t.Errorf("typeSpec(%q, %q).err=%v want %s", tt.path, tt.id, err, errBool(tt.wantErr))
@@ -77,8 +87,8 @@ func TestTypeSpec(t *testing.T) {
 			if reflect.DeepEqual(p, Pkg{}) {
 				t.Errorf("typeSpec(%q, %q).pkg=Pkg{} want non-nil", tt.path, tt.id)
 			}
-			if spec == nil {
-				t.Errorf("typeSpec(%q, %q).spec=nil want non-nil", tt.path, tt.id)
+			if reflect.DeepEqual(spec, Spec{}) {
+				t.Errorf("typeSpec(%q, %q).spec=Spec{} want non-nil", tt.path, tt.id)
 			}
 		}
 	}
@@ -252,6 +262,25 @@ func TestFuncs(t *testing.T) {
 			comments: WithComments,
 		},
 		{iface: "net.Tennis", wantErr: true},
+		{
+			iface: "github.com/josharian/impl/testdata.GenericInterface1[int]",
+			want: []Func{
+				{
+					Name: "Method1",
+					Res:  []Param{{Type: "int"}},
+				},
+				{
+					Name:   "Method2",
+					Params: []Param{{Name: "_", Type: "int"}},
+				},
+				{
+					Name:   "Method3",
+					Params: []Param{{Name: "_", Type: "int"}},
+					Res:    []Param{{Type: "int"}},
+				},
+			},
+			comments: WithComments,
+		},
 	}
 
 	for _, tt := range cases {
@@ -577,16 +606,48 @@ func TestStubGeneration(t *testing.T) {
 			want:  testdata.Interface9Output,
 			dir:   ".",
 		},
+		{
+			iface: "github.com/josharian/impl/testdata.GenericInterface1[string]",
+			want:  testdata.GenericInterface1Output,
+			dir:   ".",
+		},
+		{
+			iface: "GenericInterface1[string]",
+			want:  testdata.GenericInterface1Output,
+			dir:   "testdata",
+		},
+		{
+			iface: "github.com/josharian/impl/testdata.GenericInterface2[string, bool]",
+			want:  testdata.GenericInterface2Output,
+			dir:   ".",
+		},
+		{
+			iface: "GenericInterface2[string, bool]",
+			want:  testdata.GenericInterface2Output,
+			dir:   "testdata",
+		},
+		{
+			iface: "github.com/josharian/impl/testdata.GenericInterface3[string, bool]",
+			want:  testdata.GenericInterface3Output,
+			dir:   ".",
+		},
+		{
+			iface: "GenericInterface3[string, bool]",
+			want:  testdata.GenericInterface3Output,
+			dir:   "testdata",
+		},
 	}
 	for _, tt := range cases {
-		fns, err := funcs(tt.iface, tt.dir, "", WithComments)
-		if err != nil {
-			t.Errorf("funcs(%q).err=%v", tt.iface, err)
-		}
-		src := genStubs("r *Receiver", fns, nil)
-		if string(src) != tt.want {
-			t.Errorf("genStubs(\"r *Receiver\", %+#v).src=\n%#v\nwant\n%#v\n", fns, string(src), tt.want)
-		}
+		t.Run(tt.iface, func(t *testing.T) {
+			fns, err := funcs(tt.iface, tt.dir, "", WithComments)
+			if err != nil {
+				t.Errorf("funcs(%q).err=%v", tt.iface, err)
+			}
+			src := genStubs("r *Receiver", fns, nil)
+			if string(src) != tt.want {
+				t.Errorf("genStubs(\"r *Receiver\", %+#v).src=\n%#v\nwant\n%#v\n", fns, string(src), tt.want)
+			}
+		})
 	}
 }
 
