@@ -218,12 +218,8 @@ func typeSpec(path, id string, typeParams []string, srcDir string) (Pkg, Spec, e
 		}
 
 		for _, decl := range f.Decls {
-			genDecl, ok := decl.(*ast.GenDecl)
-			if !ok {
-				continue
-			}
-			decl := genDecl
-			if decl.Tok != token.TYPE {
+			decl, ok := decl.(*ast.GenDecl)
+			if !ok || decl.Tok != token.TYPE {
 				continue
 			}
 			for _, spec := range decl.Specs {
