@@ -47,7 +47,7 @@ type Type struct {
 }
 
 // String constructs a reference to the Type. For example:
-// Type{ID: "Foo", Params{{ID: "Bar"}, {ID: "Baz", Params: {{ID: "[]Quux"}}}}
+// Type{ID: "Foo", Params{"Bar", "Baz[[]Quux]"}}
 // would yield
 // Foo[Bar, Baz[[]Quux]]
 func (t Type) String() string {
