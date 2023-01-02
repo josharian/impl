@@ -776,6 +776,7 @@ func TestParseTypeParams(t *testing.T) {
 		{desc: "multiple space-only params", input: "Reader[ , , ]", wantErr: true},
 		{desc: "characters after bracket", input: "Reader[Foo]Bar", wantErr: true},
 		{desc: "qualified generic type", input: "io.Reader[Foo]", want: Type{ID: "Reader", Params: []string{"Foo"}}},
+		{desc: "qualified generic type with two params", input: "io.Reader[Foo, Bar]", want: Type{ID: "Reader", Params: []string{"Foo", "Bar"}}},
 		{desc: "qualified generic param", input: "Reader[io.Reader]", want: Type{ID: "Reader", Params: []string{"Reader"}}},
 		{desc: "pointer qualified generic param", input: "Reader[*io.Reader]", want: Type{ID: "Reader", Params: []string{"*Reader"}}},
 		{desc: "map generic param", input: "Reader[map[string]string]", want: Type{ID: "Reader", Params: []string{"map[string]string"}}},
