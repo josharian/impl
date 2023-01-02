@@ -144,8 +144,8 @@ func findInterface(input string, srcDir string) (path string, iface Type, err er
 		// package hack
 		//
 		// var i Reader
-		decl := f.Decls[0].(*ast.GenDecl)      // var i io.Reader
-		spec := decl.Specs[0].(*ast.ValueSpec) // i io.Reader
+		decl := f.Decls[0].(*ast.GenDecl)      // var i Reader
+		spec := decl.Specs[0].(*ast.ValueSpec) // i Reader
 		iface, err = typeFromAST(spec.Type)
 		return path, iface, err
 	}
@@ -167,6 +167,11 @@ func findInterface(input string, srcDir string) (path string, iface Type, err er
 	decl := f.Decls[1].(*ast.GenDecl)      // var i io.Reader
 	spec := decl.Specs[0].(*ast.ValueSpec) // i io.Reader
 	iface, err = typeFromAST(spec.Type)
+	if err != nil {
+		return path, iface, fmt.Errorf("error parsing type from AST: %w", err)
+	}
+	// trim off the package which got smooshed on when resolving the type
+	_, iface.ID, _ = strings.Cut(iface.ID, ".")
 	return path, iface, err
 }
 
@@ -178,7 +183,7 @@ func typeFromAST(in ast.Expr) (Type, error) {
 	case *ast.SelectorExpr:
 		// an identifier in a different package (io.Reader) shows up as a SelectorExpr
 		// we need to pull the name out
-		return Type{ID: specType.Sel.Name}, nil
+		return Type{ID: specType.X.(*ast.Ident).Name + "." + specType.Sel.Name}, nil
 	case *ast.StarExpr:
 		// pointer identifiers (*Reader) show up as a StarExpr
 		// we need to pull the name out and prefix it with a *
@@ -313,7 +318,7 @@ func typeFromAST(in ast.Expr) (Type, error) {
 			return Type{}, fmt.Errorf("got type parameters for a type ID, which is very confusing: %s", id.String())
 		}
 		res := Type{
-			ID: specType.X.(*ast.Ident).Name,
+			ID: id.ID,
 		}
 		for _, typeParam := range specType.Indices {
 			param, err := typeFromAST(typeParam)
