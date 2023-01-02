@@ -482,12 +482,14 @@ func (p Pkg) fullType(e ast.Expr) string {
 func (p Pkg) params(field *ast.Field, typeParams map[string]string) []Param {
 	var params []Param
 	var typ string
-	ident, ok := field.Type.(*ast.Ident)
-	if !ok || ident == nil {
-		typ = p.fullType(field.Type)
-	} else if genType, ok := typeParams[ident.Name]; ok {
-		typ = genType
-	} else {
+	switch expr := field.Type.(type) {
+	case *ast.Ident:
+		if genType, ok := typeParams[expr.Name]; ok {
+			typ = genType
+		} else {
+			typ = p.fullType(field.Type)
+		}
+	default:
 		typ = p.fullType(field.Type)
 	}
 	for _, name := range field.Names {
@@ -495,7 +497,7 @@ func (p Pkg) params(field *ast.Field, typeParams map[string]string) []Param {
 	}
 	// Handle anonymous params
 	if len(params) == 0 {
-		params = []Param{Param{Type: typ}}
+		params = []Param{{Type: typ}}
 	}
 	return params
 }
