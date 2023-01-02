@@ -26,47 +26,50 @@ var (
 	flagRecvPkg  = flag.String("recvpkg", "", "package name of the receiver")
 )
 
-// parseTypeParams parses the type parameters from a generic type, returning
-// the type and its parameters.
-//
-// For example, the input "foo[Bar, Baz]" would return "foo", []string{"Bar", "Baz"}
-//
-// The input does not need to be a generic type; if a type with no type
-// parameters is passed in, the type will be returned with no parameters.
-//
-// For example, the input "foo" would return "foo", []string{}
-func parseTypeParams(in string) (string, []string, error) {
-	id, rest, ok := strings.Cut(in, "[")
-	if !ok {
-		// no [ found means this isn't a generic type
-		// just return the input
-		return in, nil, nil
-	}
+// Type is a parsed type reference.
+type Type struct {
+	// ID is the type's ID or name. For example, in "foo[Bar, Baz]", the ID
+	// is "foo".
+	ID string
 
-	// we found a [, there should be type parameters in our interface
-	paramsString, rest, ok := strings.Cut(rest, "]")
-	if !ok {
-		// make sure we're closing our list of type parameters
-		return "", nil, fmt.Errorf("invalid interface name (cannot have [ without ]): %s", in)
+	// Params are the type's type params. For example, in "foo[Bar, Baz]",
+	// the Params are []string{"Bar", "Baz"}.
+	//
+	// Params never list the type of the "name type" construction of type
+	// params used when defining a generic type. They will always be just
+	// the filling type, as seen when using a generic type.
+	//
+	// Params will always be the type parameters only for the top-level
+	// type; if the params themselves have type parameters, they will
+	// remain joined to the type name. So "foo[Bar, Baz[Quux]]" will be
+	// returned as {ID: "foo", Params: []string{"Bar", "Baz[Quux]"}}
+	Params []string
+}
+
+// String constructs a reference to the Type. For example:
+// Type{ID: "Foo", Params{{ID: "Bar"}, {ID: "Baz", Params: {{ID: "[]Quux"}}}}
+// would yield
+// Foo[Bar, Baz[[]Quux]]
+func (t Type) String() string {
+	var res strings.Builder
+	res.WriteString(t.ID)
+	if len(t.Params) < 1 {
+		return res.String()
 	}
-	if rest != "" {
-		// make sure the first close bracket is actually the last character of the interface name
-		return "", nil, fmt.Errorf("invalid interface name (cannot have ] anywhere except the last character): %s", in)
+	res.WriteString("[")
+	res.WriteString(strings.Join(t.Params, ", "))
+	res.WriteString("]")
+	return res.String()
+}
+
+// parseType parses an interface reference into a Type, allowing us to
+// distinguish between the interface's ID or name and its type parameters.
+func parseType(in string) (Type, error) {
+	expr, err := parser.ParseExpr(in)
+	if err != nil {
+		return Type{}, err
 	}
-	params := strings.Split(paramsString, ",")
-	typeParams := make([]string, 0, len(params))
-	for _, param := range params {
-		trimmed := strings.TrimSpace(param)
-		if trimmed == "" {
-			continue
-		}
-		typeParams = append(typeParams, trimmed)
-	}
-	if len(typeParams) < 1 {
-		// make sure if we're declaring type parameters, we declare at least one
-		return "", nil, fmt.Errorf("invalid interface name (cannot have empty type parameters): %s", in)
-	}
-	return id, typeParams, nil
+	return typeFromAST(expr)
 }
 
 // findInterface returns the import path and identifier of an interface.
@@ -77,43 +80,48 @@ func parseTypeParams(in string) (string, []string, error) {
 // If an unqualified interface such as "UserDefinedInterface" is given, then
 // the interface definition is presumed to be in the package within srcDir and
 // findInterface returns "", "UserDefinedInterface".
-func findInterface(iface string, srcDir string) (path string, id string, typeParams []string, err error) {
-	if len(strings.Fields(iface)) != 1 && !strings.Contains(iface, "[") {
-		return "", "", nil, fmt.Errorf("couldn't parse interface: %s", iface)
+//
+// The typeParams return value will be populated for generic types. For example,
+// given "foo[Bar, Baz]", the id return value will be "foo", and typeParams will
+// be []string{"Bar", "Baz"}. The types of the type parameters should not be
+// included; "foo[Bar any, Baz io.Reader]" is invalid.
+func findInterface(input string, srcDir string) (path string, iface Type, err error) {
+	if len(strings.Fields(input)) != 1 && !strings.Contains(input, "[") {
+		return "", Type{}, fmt.Errorf("couldn't parse interface: %s", input)
 	}
 
 	srcPath := filepath.Join(srcDir, "__go_impl__.go")
 
-	if slash := strings.LastIndex(iface, "/"); slash > -1 {
+	if slash := strings.LastIndex(input, "/"); slash > -1 {
 		// package path provided
-		dot := strings.LastIndex(iface, ".")
+		dot := strings.LastIndex(input, ".")
 		// make sure iface does not end with "/" (e.g. reject net/http/)
-		if slash+1 == len(iface) {
-			return "", "", nil, fmt.Errorf("interface name cannot end with a '/' character: %s", iface)
+		if slash+1 == len(input) {
+			return "", Type{}, fmt.Errorf("interface name cannot end with a '/' character: %s", input)
 		}
 		// make sure iface does not end with "." (e.g. reject net/http.)
-		if dot+1 == len(iface) {
-			return "", "", nil, fmt.Errorf("interface name cannot end with a '.' character: %s", iface)
+		if dot+1 == len(input) {
+			return "", Type{}, fmt.Errorf("interface name cannot end with a '.' character: %s", input)
 		}
 		// make sure iface has at least one "." after "/" (e.g. reject net/http/httputil)
-		if strings.Count(iface[slash:], ".") == 0 {
-			return "", "", nil, fmt.Errorf("invalid interface name: %s", iface)
+		if strings.Count(input[slash:], ".") == 0 {
+			return "", Type{}, fmt.Errorf("invalid interface name: %s", input)
 		}
-		path = iface[:dot]
-		id = iface[dot+1:]
-		id, typeParams, err = parseTypeParams(id)
+		path = input[:dot]
+		id := input[dot+1:]
+		iface, err = parseType(id)
 		if err != nil {
-			return "", "", nil, err
+			return "", Type{}, err
 		}
-		return path, id, typeParams, nil
+		return path, iface, nil
 	}
 
-	src := []byte("package hack\n" + "var i " + iface)
+	src := []byte("package hack\n" + "var i " + input)
 	// If we couldn't determine the import path, goimports will
 	// auto fix the import path.
 	imp, err := imports.Process(srcPath, src, nil)
 	if err != nil {
-		return "", "", nil, fmt.Errorf("couldn't parse interface: %s", iface)
+		return "", Type{}, fmt.Errorf("couldn't parse interface: %s", input)
 	}
 
 	// imp should now contain an appropriate import.
@@ -124,10 +132,10 @@ func findInterface(iface string, srcDir string) (path string, id string, typePar
 		panic(err)
 	}
 
-	qualified := strings.Contains(iface, ".")
+	qualified := strings.Contains(input, ".")
 
 	if len(f.Imports) == 0 && qualified {
-		return "", "", nil, fmt.Errorf("unrecognized interface: %s", iface)
+		return "", Type{}, fmt.Errorf("unrecognized interface: %s", input)
 	}
 
 	if !qualified {
@@ -138,22 +146,8 @@ func findInterface(iface string, srcDir string) (path string, id string, typePar
 		// var i Reader
 		decl := f.Decls[0].(*ast.GenDecl)      // var i io.Reader
 		spec := decl.Specs[0].(*ast.ValueSpec) // i io.Reader
-		if indxExpr, ok := spec.Type.(*ast.IndexExpr); ok {
-			// a generic type with one type parameter shows up as an IndexExpr
-			id = indxExpr.X.(*ast.Ident).Name
-			typeParams = append(typeParams, indxExpr.Index.(*ast.Ident).Name)
-		} else if indxListExpr, ok := spec.Type.(*ast.IndexListExpr); ok {
-			// a generic type with multiple type parameters shows up as an IndexListExpr
-			id = indxListExpr.X.(*ast.Ident).Name
-			for _, typeParam := range indxListExpr.Indices {
-				typeParams = append(typeParams, typeParam.(*ast.Ident).Name)
-			}
-		} else {
-			sel := spec.Type.(*ast.Ident)
-			id = sel.Name // Reader
-		}
-
-		return path, id, typeParams, nil
+		iface, err = typeFromAST(spec.Type)
+		return path, iface, err
 	}
 
 	// If qualified, the code looks like:
@@ -172,22 +166,192 @@ func findInterface(iface string, srcDir string) (path string, id string, typePar
 	}
 	decl := f.Decls[1].(*ast.GenDecl)      // var i io.Reader
 	spec := decl.Specs[0].(*ast.ValueSpec) // i io.Reader
-	if indxExpr, ok := spec.Type.(*ast.IndexExpr); ok {
-		// a generic type with one type parameter shows up as an IndexExpr
-		id = indxExpr.X.(*ast.SelectorExpr).Sel.Name
-		typeParams = append(typeParams, indxExpr.Index.(*ast.Ident).Name)
-	} else if indxListExpr, ok := spec.Type.(*ast.IndexListExpr); ok {
-		// a generic type with multiple type parameters shows up as an IndexListExpr
-		id = indxListExpr.X.(*ast.SelectorExpr).Sel.Name
-		for _, typeParam := range indxListExpr.Indices {
-			typeParams = append(typeParams, typeParam.(*ast.Ident).Name)
-		}
-	} else {
-		sel := spec.Type.(*ast.SelectorExpr) // io.Reader
-		id = sel.Sel.Name                    // Reader
-	}
+	iface, err = typeFromAST(spec.Type)
+	return path, iface, err
+}
 
-	return path, id, typeParams, nil
+func typeFromAST(in ast.Expr) (Type, error) {
+	switch specType := in.(type) {
+	case *ast.Ident:
+		// a standalone identifier (Reader) shows up as an Ident
+		return Type{ID: specType.Name}, nil
+	case *ast.SelectorExpr:
+		// an identifier in a different package (io.Reader) shows up as a SelectorExpr
+		// we need to pull the name out
+		return Type{ID: specType.Sel.Name}, nil
+	case *ast.StarExpr:
+		// pointer identifiers (*Reader) show up as a StarExpr
+		// we need to pull the name out and prefix it with a *
+		typ, err := typeFromAST(specType.X)
+		if err != nil {
+			return Type{}, err
+		}
+		typ.ID = "*" + typ.ID
+		return typ, nil
+	case *ast.ArrayType:
+		// slices and arrays ([]Reader) show up as an ArrayType
+		typ, err := typeFromAST(specType.Elt)
+		if err != nil {
+			return Type{}, err
+		}
+		prefix := "["
+		if specType.Len != nil {
+			prefix += specType.Len.(*ast.BasicLit).Value
+		}
+		prefix += "]"
+		typ.ID = prefix + typ.ID
+		return typ, nil
+	case *ast.MapType:
+		// maps (map[string]Reader) show up as a MapType
+		key, err := typeFromAST(specType.Key)
+		if err != nil {
+			return Type{}, err
+		}
+		value, err := typeFromAST(specType.Value)
+		if err != nil {
+			return Type{}, err
+		}
+		return Type{
+			ID: "map[" + key.String() + "]" + value.String(),
+		}, nil
+	case *ast.FuncType:
+		// funcs (func() Reader) show up as a FuncType
+		// NOTE: we don't actually parse out the type params of a FuncType.
+		// This should be okay, because we really only care about
+		// parsing out the type params when parsing interface
+		// identifiers. And FuncTypes never signify an interface
+		// identifier, they're just an argument to it or a type param
+		// of it.
+		// We don't parse them out anyways like we do for everything
+		// else because funcs, alone, are pretty weird in how they use
+		// generics.
+		// For everything else, it's identifier[params].
+		// For funcs, the params get stuck in the middle of the identifier:
+		// func Foo[Param1, Param2](context.Context, Param1) Param2
+		// We're gonna need to complicate everything to support that
+		// construction, and we don't actually need the deconstructed
+		// bits, so we're just... not going to deconstruct it at all.
+		var res strings.Builder
+		res.WriteString("func")
+		if specType.TypeParams != nil && len(specType.TypeParams.List) > 0 {
+			res.WriteString("[")
+			paramList, err := buildFuncParamList(specType.TypeParams.List)
+			if err != nil {
+				return Type{}, err
+			}
+			res.WriteString(paramList)
+			res.WriteString("]")
+		}
+		res.WriteString("(")
+		if specType.Params != nil {
+			paramList, err := buildFuncParamList(specType.Params.List)
+			if err != nil {
+				return Type{}, err
+			}
+			res.WriteString(paramList)
+		}
+		res.WriteString(")")
+		if specType.Results != nil && len(specType.Results.List) > 0 {
+			res.WriteString(" ")
+			if len(specType.Results.List) > 1 {
+				res.WriteString("(")
+			}
+			paramList, err := buildFuncParamList(specType.Results.List)
+			if err != nil {
+				return Type{}, err
+			}
+			res.WriteString(paramList)
+			if len(specType.Results.List) > 1 {
+				res.WriteString(")")
+			}
+		}
+		return Type{ID: res.String()}, nil
+	case *ast.ChanType:
+		var res strings.Builder
+		// channels (chan Reader) show up as a ChanType
+		// we need to be careful to preserve send/receive semantics
+		if specType.Dir&ast.SEND == 0 {
+			// this is a receive-only channel, write the arrow before the chan keyword
+			res.WriteString("<-")
+		}
+		res.WriteString("chan")
+		if specType.Dir&ast.RECV == 0 {
+			// this is a send-only channel, write the arrow after the chan keyword
+			res.WriteString("<-")
+		}
+		res.WriteString(" ")
+		valType, err := typeFromAST(specType.Value)
+		if err != nil {
+			return Type{}, err
+		}
+		valType.ID = res.String() + valType.ID
+		return valType, nil
+	case *ast.IndexExpr:
+		// a generic type with one type parameter (Reader[Foo]) shows up as an IndexExpr
+		id, err := typeFromAST(specType.X)
+		if err != nil {
+			return Type{}, err
+		}
+		if len(id.Params) > 0 {
+			return Type{}, fmt.Errorf("got type parameters for a type ID, which is very confusing: %s", id.String())
+		}
+		param, err := typeFromAST(specType.Index)
+		if err != nil {
+			return Type{}, err
+		}
+		return Type{
+			ID:     id.ID,
+			Params: []string{param.String()},
+		}, nil
+	case *ast.IndexListExpr:
+		// a generic type with multiple type parameters shows up as an IndexListExpr
+		id, err := typeFromAST(specType.X)
+		if err != nil {
+			return Type{}, err
+		}
+		if len(id.Params) > 0 {
+			return Type{}, fmt.Errorf("got type parameters for a type ID, which is very confusing: %s", id.String())
+		}
+		res := Type{
+			ID: specType.X.(*ast.Ident).Name,
+		}
+		for _, typeParam := range specType.Indices {
+			param, err := typeFromAST(typeParam)
+			if err != nil {
+				return Type{}, err
+			}
+			res.Params = append(res.Params, param.String())
+		}
+		return res, nil
+	}
+	return Type{}, fmt.Errorf("unexpected AST type %T", in)
+}
+
+// buildFuncParamList returns a string representation of a list of function
+// params (type params, function arguments, returns) given an []*ast.Field
+// for those things.
+func buildFuncParamList(list []*ast.Field) (string, error) {
+	var res strings.Builder
+	for pos, field := range list {
+		for namePos, name := range field.Names {
+			res.WriteString(name.Name)
+			if namePos+1 < len(field.Names) {
+				res.WriteString(", ")
+			}
+		}
+		if len(field.Names) > 0 {
+			res.WriteString(" ")
+		}
+		fieldType, err := typeFromAST(field.Type)
+		if err != nil {
+			return "", err
+		}
+		res.WriteString(fieldType.String())
+		if pos+1 < len(list) {
+			res.WriteString(", ")
+		}
+	}
+	return res.String(), nil
 }
 
 // Pkg is a parsed build.Package.
@@ -206,7 +370,7 @@ type Spec struct {
 }
 
 // typeSpec locates the *ast.TypeSpec for type id in the import path.
-func typeSpec(path, id string, typeParams []string, srcDir string) (Pkg, Spec, error) {
+func typeSpec(path string, typ Type, srcDir string) (Pkg, Spec, error) {
 	var pkg *build.Package
 	var err error
 
@@ -239,34 +403,47 @@ func typeSpec(path, id string, typeParams []string, srcDir string) (Pkg, Spec, e
 			}
 			for _, spec := range decl.Specs {
 				spec := spec.(*ast.TypeSpec)
-				if spec.Name.Name != id {
+				if spec.Name.Name != typ.ID {
 					continue
 				}
-				tParams := make(map[string]string, len(typeParams))
-				if spec.TypeParams != nil {
-					var specParamNames []string
-					for _, typeParam := range spec.TypeParams.List {
-						for _, name := range typeParam.Names {
-							if name == nil {
-								continue
-							}
-							specParamNames = append(specParamNames, name.Name)
-						}
-					}
-					if len(specParamNames) != len(typeParams) {
-						continue
-					}
-					for pos, specParamName := range specParamNames {
-						tParams[specParamName] = typeParams[pos]
-					}
+				typeParams, ok := matchTypeParams(spec, typ.Params)
+				if !ok {
+					continue
 				}
 				p := Pkg{Package: pkg, FileSet: fset}
-				s := Spec{TypeSpec: spec, TypeParams: tParams}
+				s := Spec{TypeSpec: spec, TypeParams: typeParams}
 				return p, s, nil
 			}
 		}
 	}
-	return Pkg{}, Spec{}, fmt.Errorf("type %s not found in %s", id, path)
+	return Pkg{}, Spec{}, fmt.Errorf("type %s not found in %s", typ.ID, path)
+}
+
+// matchTypeParams returns a map of type parameters from a parsed interface
+// definition and the types that fill them from the user's specified type
+// info. If the passed params can't be used to fill the type parameters on the
+// passed type, a nil map and false are returned. No type checking is done,
+// only that there are sufficient types to match.
+func matchTypeParams(spec *ast.TypeSpec, params []string) (map[string]string, bool) {
+	res := make(map[string]string, len(params))
+	if spec.TypeParams != nil {
+		var specParamNames []string
+		for _, typeParam := range spec.TypeParams.List {
+			for _, name := range typeParam.Names {
+				if name == nil {
+					continue
+				}
+				specParamNames = append(specParamNames, name.Name)
+			}
+		}
+		if len(specParamNames) != len(params) {
+			return nil, false
+		}
+		for pos, specParamName := range specParamNames {
+			res[specParamName] = params[pos]
+		}
+	}
+	return res, true
 }
 
 // gofmt pretty-prints e.
@@ -302,13 +479,13 @@ func (p Pkg) fullType(e ast.Expr) string {
 	return p.gofmt(e)
 }
 
-func (p Pkg) params(field *ast.Field, genericTypes map[string]string) []Param {
+func (p Pkg) params(field *ast.Field, typeParams map[string]string) []Param {
 	var params []Param
 	var typ string
 	ident, ok := field.Type.(*ast.Ident)
 	if !ok || ident == nil {
 		typ = p.fullType(field.Type)
-	} else if genType, ok := genericTypes[ident.Name]; ok {
+	} else if genType, ok := typeParams[ident.Name]; ok {
 		typ = genType
 	} else {
 		typ = p.fullType(field.Type)
@@ -351,12 +528,12 @@ const (
 	WithoutComments EmitComments = false
 )
 
-func (p Pkg) funcsig(f *ast.Field, genericParams map[string]string, cmap ast.CommentMap, comments EmitComments) Func {
+func (p Pkg) funcsig(f *ast.Field, typeParams map[string]string, cmap ast.CommentMap, comments EmitComments) Func {
 	fn := Func{Name: f.Names[0].Name}
 	typ := f.Type.(*ast.FuncType)
 	if typ.Params != nil {
 		for _, field := range typ.Params.List {
-			for _, param := range p.params(field, genericParams) {
+			for _, param := range p.params(field, typeParams) {
 				// only for method parameters:
 				// assign a blank identifier "_" to an anonymous parameter
 				if param.Name == "" {
@@ -368,7 +545,7 @@ func (p Pkg) funcsig(f *ast.Field, genericParams map[string]string, cmap ast.Com
 	}
 	if typ.Results != nil {
 		for _, field := range typ.Results.List {
-			fn.Res = append(fn.Res, p.params(field, genericParams)...)
+			fn.Res = append(fn.Res, p.params(field, typeParams)...)
 		}
 	}
 	if comments == WithComments && f.Doc != nil {
@@ -393,13 +570,13 @@ func funcs(iface, srcDir, recvPkg string, comments EmitComments) ([]Func, error)
 	}
 
 	// Locate the interface.
-	path, id, typeParams, err := findInterface(iface, srcDir)
+	path, typ, err := findInterface(iface, srcDir)
 	if err != nil {
 		return nil, err
 	}
 
 	// Parse the package and find the interface declaration.
-	p, spec, err := typeSpec(path, id, typeParams, srcDir)
+	p, spec, err := typeSpec(path, typ, srcDir)
 	if err != nil {
 		return nil, fmt.Errorf("interface %s not found: %s", iface, err)
 	}
@@ -557,7 +734,7 @@ to prevent shell globbing.
 		recvs := strings.Fields(recv)
 		receiver := recvs[len(recvs)-1] // note that this correctly handles "s *Struct" and "*Struct"
 		receiver = strings.TrimPrefix(receiver, "*")
-		pkg, _, err := typeSpec("", receiver, nil, *flagSrcDir)
+		pkg, _, err := typeSpec("", Type{ID: receiver}, *flagSrcDir)
 		if err == nil {
 			recvPkg = pkg.Package.Name
 		}

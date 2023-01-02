@@ -20,45 +20,45 @@ func (b errBool) String() string {
 func TestFindInterface(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
-		iface      string
-		path       string
-		id         string
-		typeParams []string
-		wantErr    bool
+		input   string
+		path    string
+		typ     Type
+		wantErr bool
 	}{
-		{iface: "net.Conn", path: "net", id: "Conn"},
-		{iface: "http.ResponseWriter", path: "net/http", id: "ResponseWriter"},
-		{iface: "net.Tennis", wantErr: true},
-		{iface: "a + b", wantErr: true},
-		{iface: "a/b/c/", wantErr: true},
-		{iface: "a/b/c/pkg", wantErr: true},
-		{iface: "a/b/c/pkg.", wantErr: true},
-		{iface: "a/b/c/pkg.Typ", path: "a/b/c/pkg", id: "Typ"},
-		{iface: "gopkg.in/yaml.v2.Unmarshaler", path: "gopkg.in/yaml.v2", id: "Unmarshaler"},
-		{iface: "github.com/josharian/impl/testdata.GenericInterface1[string]", path: "github.com/josharian/impl/testdata", id: "GenericInterface1", typeParams: []string{"string"}},
+		{input: "net.Conn", path: "net", typ: Type{ID: "Conn"}},
+		{input: "http.ResponseWriter", path: "net/http", typ: Type{ID: "ResponseWriter"}},
+		{input: "net.Tennis", wantErr: true},
+		{input: "a + b", wantErr: true},
+		{input: "a/b/c/", wantErr: true},
+		{input: "a/b/c/pkg", wantErr: true},
+		{input: "a/b/c/pkg.", wantErr: true},
+		{input: "a/b/c/pkg.Typ", path: "a/b/c/pkg", typ: Type{ID: "Typ"}},
+		{input: "gopkg.in/yaml.v2.Unmarshaler", path: "gopkg.in/yaml.v2", typ: Type{ID: "Unmarshaler"}},
+		{input: "github.com/josharian/impl/testdata.GenericInterface1[string]", path: "github.com/josharian/impl/testdata", typ: Type{ID: "GenericInterface1", Params: []string{"string"}}},
+		{input: "github.com/josharian/impl/testdata.GenericInterface1[*string]", path: "github.com/josharian/impl/testdata", typ: Type{ID: "GenericInterface1", Params: []string{"*string"}}},
 	}
 
 	for _, tt := range cases {
 		tt := tt
-		t.Run(tt.iface, func(t *testing.T) {
+		t.Run(tt.input, func(t *testing.T) {
 			t.Parallel()
-			path, id, typeParams, err := findInterface(tt.iface, ".")
+			path, typ, err := findInterface(tt.input, ".")
 			gotErr := err != nil
 			if tt.wantErr != gotErr {
-				t.Fatalf("findInterface(%q).err=%v want %s", tt.iface, err, errBool(tt.wantErr))
+				t.Fatalf("findInterface(%q).err=%v want %s", tt.input, err, errBool(tt.wantErr))
 			}
 			if tt.path != path {
-				t.Errorf("findInterface(%q).path=%q want %q", tt.iface, path, tt.path)
+				t.Errorf("findInterface(%q).path=%q want %q", tt.input, path, tt.path)
 			}
-			if tt.id != id {
-				t.Errorf("findInterface(%q).id=%q want %q", tt.iface, id, tt.id)
+			if tt.typ.ID != typ.ID {
+				t.Errorf("findInterface(%q).id=%q want %q", tt.input, typ.ID, tt.typ.ID)
 			}
-			if len(tt.typeParams) != len(typeParams) {
-				t.Errorf("findInterface(%q).len(typeParams)=%d want %d", tt.iface, len(typeParams), len(tt.typeParams))
+			if len(tt.typ.Params) != len(typ.Params) {
+				t.Errorf("findInterface(%q).len(typeParams)=%d want %d", tt.input, len(typ.Params), len(tt.typ.Params))
 			}
-			for pos, v := range tt.typeParams {
-				if v != typeParams[pos] {
-					t.Errorf("findInterface(%q).typeParams[%d]=%q, want %q", tt.iface, pos, typeParams[pos], v)
+			for pos, v := range tt.typ.Params {
+				if v != typ.Params[pos] {
+					t.Errorf("findInterface(%q).typeParams[%d]=%q, want %q", tt.input, pos, typ.Params[pos], v)
 				}
 			}
 		})
@@ -69,26 +69,26 @@ func TestTypeSpec(t *testing.T) {
 	// For now, just test whether we can find the interface.
 	cases := []struct {
 		path    string
-		id      string
+		typ     Type
 		wantErr bool
 	}{
-		{path: "net", id: "Conn"},
-		{path: "net", id: "Con", wantErr: true},
+		{path: "net", typ: Type{ID: "Conn"}},
+		{path: "net", typ: Type{ID: "Con"}, wantErr: true},
 	}
 
 	for _, tt := range cases {
-		p, spec, err := typeSpec(tt.path, tt.id, nil, "")
+		p, spec, err := typeSpec(tt.path, tt.typ, "")
 		gotErr := err != nil
 		if tt.wantErr != gotErr {
-			t.Errorf("typeSpec(%q, %q).err=%v want %s", tt.path, tt.id, err, errBool(tt.wantErr))
+			t.Errorf("typeSpec(%q, %q).err=%v want %s", tt.path, tt.typ, err, errBool(tt.wantErr))
 			continue
 		}
 		if err == nil {
 			if reflect.DeepEqual(p, Pkg{}) {
-				t.Errorf("typeSpec(%q, %q).pkg=Pkg{} want non-nil", tt.path, tt.id)
+				t.Errorf("typeSpec(%q, %q).pkg=Pkg{} want non-nil", tt.path, tt.typ)
 			}
 			if reflect.DeepEqual(spec, Spec{}) {
-				t.Errorf("typeSpec(%q, %q).spec=Spec{} want non-nil", tt.path, tt.id)
+				t.Errorf("typeSpec(%q, %q).spec=Spec{} want non-nil", tt.path, tt.typ)
 			}
 		}
 	}
@@ -760,44 +760,68 @@ func TestParseTypeParams(t *testing.T) {
 	t.Parallel()
 
 	cases := []struct {
-		desc       string
-		input      string
-		wantID     string
-		wantParams []string
-		wantErr    bool
+		desc    string
+		input   string
+		want    Type
+		wantErr bool
 	}{
-		{desc: "non-generic type", input: "Reader", wantID: "Reader"},
-		{desc: "one type param", input: "Reader[Foo]", wantID: "Reader", wantParams: []string{"Foo"}},
-		{desc: "two type params", input: "Reader[Foo, Bar]", wantID: "Reader", wantParams: []string{"Foo", "Bar"}},
-		{desc: "three type params", input: "Reader[Foo, Bar, Baz]", wantID: "Reader", wantParams: []string{"Foo", "Bar", "Baz"}},
-		{desc: "no spaces", input: "Reader[Foo,Bar]", wantID: "Reader", wantParams: []string{"Foo", "Bar"}},
+		{desc: "non-generic type", input: "Reader", want: Type{ID: "Reader"}},
+		{desc: "one type param", input: "Reader[Foo]", want: Type{ID: "Reader", Params: []string{"Foo"}}},
+		{desc: "two type params", input: "Reader[Foo, Bar]", want: Type{ID: "Reader", Params: []string{"Foo", "Bar"}}},
+		{desc: "three type params", input: "Reader[Foo, Bar, Baz]", want: Type{ID: "Reader", Params: []string{"Foo", "Bar", "Baz"}}},
+		{desc: "no spaces", input: "Reader[Foo,Bar]", want: Type{ID: "Reader", Params: []string{"Foo", "Bar"}}},
 		{desc: "unclosed brackets", input: "Reader[Foo", wantErr: true},
 		{desc: "no params", input: "Reader[]", wantErr: true},
 		{desc: "space-only params", input: "Reader[ ]", wantErr: true},
 		{desc: "multiple space-only params", input: "Reader[ , , ]", wantErr: true},
 		{desc: "characters after bracket", input: "Reader[Foo]Bar", wantErr: true},
+		{desc: "qualified generic type", input: "io.Reader[Foo]", want: Type{ID: "Reader", Params: []string{"Foo"}}},
+		{desc: "qualified generic param", input: "Reader[io.Reader]", want: Type{ID: "Reader", Params: []string{"Reader"}}},
+		{desc: "pointer qualified generic param", input: "Reader[*io.Reader]", want: Type{ID: "Reader", Params: []string{"*Reader"}}},
+		{desc: "map generic param", input: "Reader[map[string]string]", want: Type{ID: "Reader", Params: []string{"map[string]string"}}},
+		{desc: "pointer map generic param", input: "Reader[*map[string]string]", want: Type{ID: "Reader", Params: []string{"*map[string]string"}}},
+		{desc: "pointer key map generic param", input: "Reader[map[*string]string]", want: Type{ID: "Reader", Params: []string{"map[*string]string"}}},
+		{desc: "pointer value map generic param", input: "Reader[map[string]*string]", want: Type{ID: "Reader", Params: []string{"map[string]*string"}}},
+		{desc: "slice generic param", input: "Reader[[]string]", want: Type{ID: "Reader", Params: []string{"[]string"}}},
+		{desc: "pointer slice generic param", input: "Reader[*[]string]", want: Type{ID: "Reader", Params: []string{"*[]string"}}},
+		{desc: "pointer slice value generic param", input: "Reader[[]*string]", want: Type{ID: "Reader", Params: []string{"[]*string"}}},
+		{desc: "array generic param", input: "Reader[[1]string]", want: Type{ID: "Reader", Params: []string{"[1]string"}}},
+		{desc: "pointer array generic param", input: "Reader[*[1]string]", want: Type{ID: "Reader", Params: []string{"*[1]string"}}},
+		{desc: "pointer array value generic param", input: "Reader[[1]*string]", want: Type{ID: "Reader", Params: []string{"[1]*string"}}},
+		{desc: "chan generic param", input: "Reader[chan error]", want: Type{ID: "Reader", Params: []string{"chan error"}}},
+		{desc: "receiver chan generic param", input: "Reader[<-chan error]", want: Type{ID: "Reader", Params: []string{"<-chan error"}}},
+		{desc: "send chan generic param", input: "Reader[chan<- error]", want: Type{ID: "Reader", Params: []string{"chan<- error"}}},
+		{desc: "pointer chan generic param", input: "Reader[*chan error]", want: Type{ID: "Reader", Params: []string{"*chan error"}}},
+		{desc: "func generic param", input: "Reader[func() string]", want: Type{ID: "Reader", Params: []string{"func() string"}}},
+		{desc: "one arg func generic param", input: "Reader[func(a int) string]", want: Type{ID: "Reader", Params: []string{"func(a int) string"}}},
+		{desc: "two arg one type func generic param", input: "Reader[func(a, b int) string]", want: Type{ID: "Reader", Params: []string{"func(a, b int) string"}}},
+		{desc: "three arg one type func generic param", input: "Reader[func(a, b, c int) string]", want: Type{ID: "Reader", Params: []string{"func(a, b, c int) string"}}},
+		{desc: "three arg two types func generic param", input: "Reader[func(a, b string, c int) string]", want: Type{ID: "Reader", Params: []string{"func(a, b string, c int) string"}}},
+		{desc: "three arg three types func generic param", input: "Reader[func(a bool, b string, c int) string]", want: Type{ID: "Reader", Params: []string{"func(a bool, b string, c int) string"}}},
+		// don't need support for generics on the function type itself; function types must have no type parameters
+		// https://cs.opensource.google/go/go/+/master:src/go/parser/parser.go;l=1048;drc=cafb49ac731f862f386862d64b27b8314eeb2909
 	}
 	for _, tt := range cases {
 		tt := tt
 		t.Run(tt.desc, func(t *testing.T) {
 			t.Parallel()
 
-			id, params, err := parseTypeParams(tt.input)
+			typ, err := parseType(tt.input)
 			if err != nil {
 				if tt.wantErr {
 					return
 				}
 				t.Fatalf("unexpected error: %s", err)
 			}
-			if id != tt.wantID {
-				t.Errorf("wanted ID %q, got %q", tt.wantID, id)
+			if typ.ID != tt.want.ID {
+				t.Errorf("wanted ID %q, got %q", tt.want.ID, typ.ID)
 			}
-			if len(params) != len(tt.wantParams) {
-				t.Errorf("wanted %d params, got %d: %v", len(tt.wantParams), len(params), params)
+			if len(typ.Params) != len(tt.want.Params) {
+				t.Errorf("wanted %d params, got %d: %v", len(tt.want.Params), len(typ.Params), typ.Params)
 			}
-			for pos, param := range params {
-				if param != tt.wantParams[pos] {
-					t.Errorf("expected param %d to be %q, got %q: %v", pos, tt.wantParams[pos], param, params)
+			for pos, param := range typ.Params {
+				if param != tt.want.Params[pos] {
+					t.Errorf("expected param %d to be %q, got %q: %v", pos, tt.want.Params[pos], param, typ.Params)
 				}
 			}
 		})
