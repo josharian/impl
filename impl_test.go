@@ -755,3 +755,51 @@ func TestStubGenerationForRepeatedName(t *testing.T) {
 		})
 	}
 }
+
+func TestParseTypeParams(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		desc       string
+		input      string
+		wantID     string
+		wantParams []string
+		wantErr    bool
+	}{
+		{desc: "non-generic type", input: "Reader", wantID: "Reader"},
+		{desc: "one type param", input: "Reader[Foo]", wantID: "Reader", wantParams: []string{"Foo"}},
+		{desc: "two type params", input: "Reader[Foo, Bar]", wantID: "Reader", wantParams: []string{"Foo", "Bar"}},
+		{desc: "three type params", input: "Reader[Foo, Bar, Baz]", wantID: "Reader", wantParams: []string{"Foo", "Bar", "Baz"}},
+		{desc: "no spaces", input: "Reader[Foo,Bar]", wantID: "Reader", wantParams: []string{"Foo", "Bar"}},
+		{desc: "unclosed brackets", input: "Reader[Foo", wantErr: true},
+		{desc: "no params", input: "Reader[]", wantErr: true},
+		{desc: "space-only params", input: "Reader[ ]", wantErr: true},
+		{desc: "multiple space-only params", input: "Reader[ , , ]", wantErr: true},
+		{desc: "characters after bracket", input: "Reader[Foo]Bar", wantErr: true},
+	}
+	for _, tt := range cases {
+		tt := tt
+		t.Run(tt.desc, func(t *testing.T) {
+			t.Parallel()
+
+			id, params, err := parseTypeParams(tt.input)
+			if err != nil {
+				if tt.wantErr {
+					return
+				}
+				t.Fatalf("unexpected error: %s", err)
+			}
+			if id != tt.wantID {
+				t.Errorf("wanted ID %q, got %q", tt.wantID, id)
+			}
+			if len(params) != len(tt.wantParams) {
+				t.Errorf("wanted %d params, got %d: %v", len(tt.wantParams), len(params), params)
+			}
+			for pos, param := range params {
+				if param != tt.wantParams[pos] {
+					t.Errorf("expected param %d to be %q, got %q: %v", pos, tt.wantParams[pos], param, params)
+				}
+			}
+		})
+	}
+}

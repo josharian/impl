@@ -26,26 +26,41 @@ var (
 	flagRecvPkg  = flag.String("recvpkg", "", "package name of the receiver")
 )
 
+// parseTypeParams parses the type parameters from a generic type, returning
+// the type and its parameters.
+//
+// For example, the input "foo[Bar, Baz]" would return "foo", []string{"Bar", "Baz"}
+//
+// The input does not need to be a generic type; if a type with no type
+// parameters is passed in, the type will be returned with no parameters.
+//
+// For example, the input "foo" would return "foo", []string{}
 func parseTypeParams(in string) (string, []string, error) {
-	firstOpenBracket := strings.Index(in, "[")
-	if firstOpenBracket < 0 {
-		return in, []string{}, nil
+	id, rest, ok := strings.Cut(in, "[")
+	if !ok {
+		// no [ found means this isn't a generic type
+		// just return the input
+		return in, nil, nil
 	}
-	// there are type parameters in our interface
-	id := in[:firstOpenBracket]
-	firstCloseBracket := strings.LastIndex(in, "]")
-	if firstCloseBracket < 0 {
+
+	// we found a [, there should be type parameters in our interface
+	paramsString, rest, ok := strings.Cut(rest, "]")
+	if !ok {
 		// make sure we're closing our list of type parameters
 		return "", nil, fmt.Errorf("invalid interface name (cannot have [ without ]): %s", in)
 	}
-	if firstCloseBracket != len(in)-1 {
+	if rest != "" {
 		// make sure the first close bracket is actually the last character of the interface name
 		return "", nil, fmt.Errorf("invalid interface name (cannot have ] anywhere except the last character): %s", in)
 	}
-	params := strings.Split(in[firstOpenBracket+1:firstCloseBracket], ",")
+	params := strings.Split(paramsString, ",")
 	typeParams := make([]string, 0, len(params))
 	for _, param := range params {
-		typeParams = append(typeParams, strings.TrimSpace(param))
+		trimmed := strings.TrimSpace(param)
+		if trimmed == "" {
+			continue
+		}
+		typeParams = append(typeParams, trimmed)
 	}
 	if len(typeParams) < 1 {
 		// make sure if we're declaring type parameters, we declare at least one
