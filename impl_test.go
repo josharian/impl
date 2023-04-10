@@ -572,6 +572,11 @@ func TestStubGeneration(t *testing.T) {
 			want:  testdata.Interface1Output,
 			dir:   "testdata",
 		},
+		{
+			iface: "github.com/josharian/impl/testdata.Interface9",
+			want:  testdata.Interface9Output,
+			dir:   ".",
+		},
 	}
 	for _, tt := range cases {
 		fns, err := funcs(tt.iface, tt.dir, "", WithComments)
