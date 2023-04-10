@@ -77,8 +77,8 @@ func TestTypeSpec(t *testing.T) {
 			if reflect.DeepEqual(p, Pkg{}) {
 				t.Errorf("typeSpec(%q, %q).pkg=Pkg{} want non-nil", tt.path, tt.id)
 			}
-			if reflect.DeepEqual(spec, Spec{}) {
-				t.Errorf("typeSpec(%q, %q).spec=Spec{} want non-nil", tt.path, tt.id)
+			if spec == nil {
+				t.Errorf("typeSpec(%q, %q).spec=nil want non-nil", tt.path, tt.id)
 			}
 		}
 	}
