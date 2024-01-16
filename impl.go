@@ -292,7 +292,7 @@ func typeFromAST(in ast.Expr) (Type, error) {
 			return Type{}, err
 		}
 		if len(id.Params) > 0 {
-			return Type{}, fmt.Errorf("got type parameters for a type ID, which is very confusing: %s", id.String())
+			return Type{}, fmt.Errorf("got type parameters for a type name: %s", id.String())
 		}
 		param, err := typeFromAST(specType.Index)
 		if err != nil {
@@ -309,7 +309,7 @@ func typeFromAST(in ast.Expr) (Type, error) {
 			return Type{}, err
 		}
 		if len(id.Params) > 0 {
-			return Type{}, fmt.Errorf("got type parameters for a type ID, which is very confusing: %s", id.String())
+			return Type{}, fmt.Errorf("got type parameters for a type ID: %s", id.String())
 		}
 		res := Type{
 			Name: id.Name,
