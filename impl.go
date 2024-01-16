@@ -28,9 +28,9 @@ var (
 
 // Type is a parsed type reference.
 type Type struct {
-	// ID is the type's ID or name. For example, in "foo[Bar, Baz]", the ID
+	// Name is the type's name. For example, in "foo[Bar, Baz]", the name
 	// is "foo".
-	ID string
+	Name string
 
 	// Params are the type's type params. For example, in "foo[Bar, Baz]",
 	// the Params are []string{"Bar", "Baz"}.
@@ -52,7 +52,7 @@ type Type struct {
 // Foo[Bar, Baz[[]Quux]]
 func (t Type) String() string {
 	var res strings.Builder
-	res.WriteString(t.ID)
+	res.WriteString(t.Name)
 	if len(t.Params) < 1 {
 		return res.String()
 	}
@@ -171,7 +171,7 @@ func findInterface(input string, srcDir string) (path string, iface Type, err er
 		return path, iface, fmt.Errorf("error parsing type from AST: %w", err)
 	}
 	// trim off the package which got smooshed on when resolving the type
-	_, iface.ID, _ = strings.Cut(iface.ID, ".")
+	_, iface.Name, _ = strings.Cut(iface.Name, ".")
 	return path, iface, err
 }
 
@@ -179,11 +179,11 @@ func typeFromAST(in ast.Expr) (Type, error) {
 	switch specType := in.(type) {
 	case *ast.Ident:
 		// a standalone identifier (Reader) shows up as an Ident
-		return Type{ID: specType.Name}, nil
+		return Type{Name: specType.Name}, nil
 	case *ast.SelectorExpr:
 		// an identifier in a different package (io.Reader) shows up as a SelectorExpr
 		// we need to pull the name out
-		return Type{ID: specType.X.(*ast.Ident).Name + "." + specType.Sel.Name}, nil
+		return Type{Name: specType.X.(*ast.Ident).Name + "." + specType.Sel.Name}, nil
 	case *ast.StarExpr:
 		// pointer identifiers (*Reader) show up as a StarExpr
 		// we need to pull the name out and prefix it with a *
@@ -191,7 +191,7 @@ func typeFromAST(in ast.Expr) (Type, error) {
 		if err != nil {
 			return Type{}, err
 		}
-		typ.ID = "*" + typ.ID
+		typ.Name = "*" + typ.Name
 		return typ, nil
 	case *ast.ArrayType:
 		// slices and arrays ([]Reader) show up as an ArrayType
@@ -204,7 +204,7 @@ func typeFromAST(in ast.Expr) (Type, error) {
 			prefix += specType.Len.(*ast.BasicLit).Value
 		}
 		prefix += "]"
-		typ.ID = prefix + typ.ID
+		typ.Name = prefix + typ.Name
 		return typ, nil
 	case *ast.MapType:
 		// maps (map[string]Reader) show up as a MapType
@@ -217,7 +217,7 @@ func typeFromAST(in ast.Expr) (Type, error) {
 			return Type{}, err
 		}
 		return Type{
-			ID: "map[" + key.String() + "]" + value.String(),
+			Name: "map[" + key.String() + "]" + value.String(),
 		}, nil
 	case *ast.FuncType:
 		// funcs (func() Reader) show up as a FuncType
@@ -270,7 +270,7 @@ func typeFromAST(in ast.Expr) (Type, error) {
 				res.WriteString(")")
 			}
 		}
-		return Type{ID: res.String()}, nil
+		return Type{Name: res.String()}, nil
 	case *ast.ChanType:
 		var res strings.Builder
 		// channels (chan Reader) show up as a ChanType
@@ -289,7 +289,7 @@ func typeFromAST(in ast.Expr) (Type, error) {
 		if err != nil {
 			return Type{}, err
 		}
-		valType.ID = res.String() + valType.ID
+		valType.Name = res.String() + valType.Name
 		return valType, nil
 	case *ast.IndexExpr:
 		// a generic type with one type parameter (Reader[Foo]) shows up as an IndexExpr
@@ -305,7 +305,7 @@ func typeFromAST(in ast.Expr) (Type, error) {
 			return Type{}, err
 		}
 		return Type{
-			ID:     id.ID,
+			Name:   id.Name,
 			Params: []string{param.String()},
 		}, nil
 	case *ast.IndexListExpr:
@@ -318,7 +318,7 @@ func typeFromAST(in ast.Expr) (Type, error) {
 			return Type{}, fmt.Errorf("got type parameters for a type ID, which is very confusing: %s", id.String())
 		}
 		res := Type{
-			ID: id.ID,
+			Name: id.Name,
 		}
 		for _, typeParam := range specType.Indices {
 			param, err := typeFromAST(typeParam)
@@ -408,7 +408,7 @@ func typeSpec(path string, typ Type, srcDir string) (Pkg, Spec, error) {
 			}
 			for _, spec := range decl.Specs {
 				spec := spec.(*ast.TypeSpec)
-				if spec.Name.Name != typ.ID {
+				if spec.Name.Name != typ.Name {
 					continue
 				}
 				typeParams, ok := matchTypeParams(spec, typ.Params)
@@ -421,7 +421,7 @@ func typeSpec(path string, typ Type, srcDir string) (Pkg, Spec, error) {
 			}
 		}
 	}
-	return Pkg{}, Spec{}, fmt.Errorf("type %s not found in %s", typ.ID, path)
+	return Pkg{}, Spec{}, fmt.Errorf("type %s not found in %s", typ.Name, path)
 }
 
 // matchTypeParams returns a map of type parameters from a parsed interface
@@ -708,7 +708,7 @@ impl [-dir directory] <recv> <iface>
 		fmt.Fprint(os.Stderr, `
 
 Examples:
-		
+
 impl 'f *File' io.Reader
 impl Murmur hash.Hash
 impl -dir $GOPATH/src/github.com/josharian/impl Murmur hash.Hash
@@ -735,13 +735,13 @@ to prevent shell globbing.
 		}
 	}
 
-	var recvPkg = *flagRecvPkg
+	recvPkg := *flagRecvPkg
 	if recvPkg == "" {
 		//  "   s *Struct   " , receiver: Struct
 		recvs := strings.Fields(recv)
 		receiver := recvs[len(recvs)-1] // note that this correctly handles "s *Struct" and "*Struct"
 		receiver = strings.TrimPrefix(receiver, "*")
-		pkg, _, err := typeSpec("", Type{ID: receiver}, *flagSrcDir)
+		pkg, _, err := typeSpec("", Type{Name: receiver}, *flagSrcDir)
 		if err == nil {
 			recvPkg = pkg.Package.Name
 		}
