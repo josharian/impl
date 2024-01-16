@@ -69,17 +69,16 @@ func parseType(in string) (Type, error) {
 
 // findInterface returns the import path and type of an interface.
 // For example, given "http.ResponseWriter", findInterface returns
-// "net/http", Type{ID: "ResponseWriter"}.
+// "net/http", Type{Name: "ResponseWriter"}.
 // If a fully qualified interface is given, such as "net/http.ResponseWriter",
 // it simply parses the input.
 // If an unqualified interface such as "UserDefinedInterface" is given, then
 // the interface definition is presumed to be in the package within srcDir and
-// findInterface returns "", Type{ID: "UserDefinedInterface"}.
+// findInterface returns "", Type{Name: "UserDefinedInterface"}.
 //
-// Generic types will have their type params returned in the Params property of
+// Generic types will have their type params set in the Params property of
 // the Type. Input should always reference generic types with their parameters
-// filled, i.e. GenericType[string, bool], as opposed to
-// GenericType[A any, B comparable].
+// specified: GenericType[string, bool], not GenericType[A any, B comparable].
 func findInterface(input string, srcDir string) (path string, iface Type, err error) {
 	if len(strings.Fields(input)) != 1 && !strings.Contains(input, "[") {
 		return "", Type{}, fmt.Errorf("couldn't parse interface: %s", input)
