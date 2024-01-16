@@ -47,23 +47,18 @@ type Type struct {
 }
 
 // String constructs a reference to the Type. For example:
-// Type{ID: "Foo", Params{"Bar", "Baz[[]Quux]"}}
+// Type{Name: "Foo", Params{"Bar", "Baz[[]Quux]"}}
 // would yield
 // Foo[Bar, Baz[[]Quux]]
 func (t Type) String() string {
-	var res strings.Builder
-	res.WriteString(t.Name)
 	if len(t.Params) < 1 {
-		return res.String()
+		return t.Name
 	}
-	res.WriteString("[")
-	res.WriteString(strings.Join(t.Params, ", "))
-	res.WriteString("]")
-	return res.String()
+	return t.Name + "[" + strings.Join(t.Params, ", ") + "]"
 }
 
 // parseType parses an interface reference into a Type, allowing us to
-// distinguish between the interface's ID or name and its type parameters.
+// distinguish between the interface's name and its type parameters.
 func parseType(in string) (Type, error) {
 	expr, err := parser.ParseExpr(in)
 	if err != nil {
