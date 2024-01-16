@@ -29,6 +29,7 @@ func TestFindInterface(t *testing.T) {
 		{input: "http.ResponseWriter", path: "net/http", typ: Type{Name: "ResponseWriter"}},
 		{input: "net.Tennis", wantErr: true},
 		{input: "a + b", wantErr: true},
+		{input: "t[T,U]", path: "", typ: Type{Name: "t", Params: []string{"T", "U"}}},
 		{input: "a/b/c/", wantErr: true},
 		{input: "a/b/c/pkg", wantErr: true},
 		{input: "a/b/c/pkg.", wantErr: true},
