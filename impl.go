@@ -424,23 +424,24 @@ func typeSpec(path string, typ Type, srcDir string) (Pkg, Spec, error) {
 // passed type, a nil map and false are returned. No type checking is done,
 // only that there are sufficient types to match.
 func matchTypeParams(spec *ast.TypeSpec, params []string) (map[string]string, bool) {
+	if spec.TypeParams == nil {
+		return nil, true
+	}
 	res := make(map[string]string, len(params))
-	if spec.TypeParams != nil {
-		var specParamNames []string
-		for _, typeParam := range spec.TypeParams.List {
-			for _, name := range typeParam.Names {
-				if name == nil {
-					continue
-				}
-				specParamNames = append(specParamNames, name.Name)
+	var specParamNames []string
+	for _, typeParam := range spec.TypeParams.List {
+		for _, name := range typeParam.Names {
+			if name == nil {
+				continue
 			}
+			specParamNames = append(specParamNames, name.Name)
 		}
-		if len(specParamNames) != len(params) {
-			return nil, false
-		}
-		for pos, specParamName := range specParamNames {
-			res[specParamName] = params[pos]
-		}
+	}
+	if len(specParamNames) != len(params) {
+		return nil, false
+	}
+	for pos, specParamName := range specParamNames {
+		res[specParamName] = params[pos]
 	}
 	return res, true
 }
