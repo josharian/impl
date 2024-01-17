@@ -26,45 +26,96 @@ var (
 	flagRecvPkg  = flag.String("recvpkg", "", "package name of the receiver")
 )
 
-// findInterface returns the import path and identifier of an interface.
+// Type is a parsed type reference.
+type Type struct {
+	// Name is the type's name. For example, in "foo[Bar, Baz]", the name
+	// is "foo".
+	Name string
+
+	// Params are the type's type params. For example, in "foo[Bar, Baz]",
+	// the Params are []string{"Bar", "Baz"}.
+	//
+	// Params never list the type of the "name type" construction of type
+	// params used when defining a generic type. They will always be just
+	// the filling type, as seen when using a generic type.
+	//
+	// Params will always be the type parameters only for the top-level
+	// type; if the params themselves have type parameters, they will
+	// remain joined to the type name. So "foo[Bar, Baz[Quux]]" will be
+	// returned as {ID: "foo", Params: []string{"Bar", "Baz[Quux]"}}
+	Params []string
+}
+
+// String constructs a reference to the Type. For example:
+// Type{Name: "Foo", Params{"Bar", "Baz[[]Quux]"}}
+// would yield
+// Foo[Bar, Baz[[]Quux]]
+func (t Type) String() string {
+	if len(t.Params) < 1 {
+		return t.Name
+	}
+	return t.Name + "[" + strings.Join(t.Params, ", ") + "]"
+}
+
+// parseType parses an interface reference into a Type, allowing us to
+// distinguish between the interface's name and its type parameters.
+func parseType(in string) (Type, error) {
+	expr, err := parser.ParseExpr(in)
+	if err != nil {
+		return Type{}, err
+	}
+	return typeFromAST(expr)
+}
+
+// findInterface returns the import path and type of an interface.
 // For example, given "http.ResponseWriter", findInterface returns
-// "net/http", "ResponseWriter".
+// "net/http", Type{Name: "ResponseWriter"}.
 // If a fully qualified interface is given, such as "net/http.ResponseWriter",
 // it simply parses the input.
 // If an unqualified interface such as "UserDefinedInterface" is given, then
 // the interface definition is presumed to be in the package within srcDir and
-// findInterface returns "", "UserDefinedInterface".
-func findInterface(iface string, srcDir string) (path string, id string, err error) {
-	if len(strings.Fields(iface)) != 1 {
-		return "", "", fmt.Errorf("couldn't parse interface: %s", iface)
+// findInterface returns "", Type{Name: "UserDefinedInterface"}.
+//
+// Generic types will have their type params set in the Params property of
+// the Type. Input should always reference generic types with their parameters
+// specified: GenericType[string, bool], not GenericType[A any, B comparable].
+func findInterface(input string, srcDir string) (path string, iface Type, err error) {
+	if len(strings.Fields(input)) != 1 && !strings.Contains(input, "[") {
+		return "", Type{}, fmt.Errorf("couldn't parse interface: %s", input)
 	}
 
 	srcPath := filepath.Join(srcDir, "__go_impl__.go")
 
-	if slash := strings.LastIndex(iface, "/"); slash > -1 {
+	if slash := strings.LastIndex(input, "/"); slash > -1 {
 		// package path provided
-		dot := strings.LastIndex(iface, ".")
+		dot := strings.LastIndex(input, ".")
 		// make sure iface does not end with "/" (e.g. reject net/http/)
-		if slash+1 == len(iface) {
-			return "", "", fmt.Errorf("interface name cannot end with a '/' character: %s", iface)
+		if slash+1 == len(input) {
+			return "", Type{}, fmt.Errorf("interface name cannot end with a '/' character: %s", input)
 		}
 		// make sure iface does not end with "." (e.g. reject net/http.)
-		if dot+1 == len(iface) {
-			return "", "", fmt.Errorf("interface name cannot end with a '.' character: %s", iface)
+		if dot+1 == len(input) {
+			return "", Type{}, fmt.Errorf("interface name cannot end with a '.' character: %s", input)
 		}
 		// make sure iface has at least one "." after "/" (e.g. reject net/http/httputil)
-		if strings.Count(iface[slash:], ".") == 0 {
-			return "", "", fmt.Errorf("invalid interface name: %s", iface)
+		if strings.Count(input[slash:], ".") == 0 {
+			return "", Type{}, fmt.Errorf("invalid interface name: %s", input)
 		}
-		return iface[:dot], iface[dot+1:], nil
+		path = input[:dot]
+		id := input[dot+1:]
+		iface, err = parseType(id)
+		if err != nil {
+			return "", Type{}, err
+		}
+		return path, iface, nil
 	}
 
-	src := []byte("package hack\n" + "var i " + iface)
+	src := []byte("package hack\n" + "var i " + input)
 	// If we couldn't determine the import path, goimports will
 	// auto fix the import path.
 	imp, err := imports.Process(srcPath, src, nil)
 	if err != nil {
-		return "", "", fmt.Errorf("couldn't parse interface: %s", iface)
+		return "", Type{}, fmt.Errorf("couldn't parse interface: %s", input)
 	}
 
 	// imp should now contain an appropriate import.
@@ -75,10 +126,10 @@ func findInterface(iface string, srcDir string) (path string, id string, err err
 		panic(err)
 	}
 
-	qualified := strings.Contains(iface, ".")
+	qualified := strings.Contains(input, ".")
 
 	if len(f.Imports) == 0 && qualified {
-		return "", "", fmt.Errorf("unrecognized interface: %s", iface)
+		return "", Type{}, fmt.Errorf("unrecognized interface: %s", input)
 	}
 
 	if !qualified {
@@ -87,12 +138,10 @@ func findInterface(iface string, srcDir string) (path string, id string, err err
 		// package hack
 		//
 		// var i Reader
-		decl := f.Decls[0].(*ast.GenDecl)      // var i io.Reader
-		spec := decl.Specs[0].(*ast.ValueSpec) // i io.Reader
-		sel := spec.Type.(*ast.Ident)
-		id = sel.Name // Reader
-
-		return path, id, nil
+		decl := f.Decls[0].(*ast.GenDecl)      // var i Reader
+		spec := decl.Specs[0].(*ast.ValueSpec) // i Reader
+		iface, err = typeFromAST(spec.Type)
+		return path, iface, err
 	}
 
 	// If qualified, the code looks like:
@@ -111,10 +160,54 @@ func findInterface(iface string, srcDir string) (path string, id string, err err
 	}
 	decl := f.Decls[1].(*ast.GenDecl)      // var i io.Reader
 	spec := decl.Specs[0].(*ast.ValueSpec) // i io.Reader
-	sel := spec.Type.(*ast.SelectorExpr)   // io.Reader
-	id = sel.Sel.Name                      // Reader
+	iface, err = typeFromAST(spec.Type)
+	if err != nil {
+		return path, iface, fmt.Errorf("error parsing type from AST: %w", err)
+	}
+	// trim off the package which got smooshed on when resolving the type
+	_, iface.Name, _ = strings.Cut(iface.Name, ".")
+	return path, iface, err
+}
 
-	return path, id, nil
+func typeFromAST(in ast.Expr) (Type, error) {
+	// Extract type name and params from generic types.
+	var typeName ast.Expr
+	var typeParams []ast.Expr
+	switch in := in.(type) {
+	case *ast.IndexExpr:
+		// a generic type with one type parameter (Reader[Foo]) shows up as an IndexExpr
+		typeName = in.X
+		typeParams = []ast.Expr{in.Index}
+	case *ast.IndexListExpr:
+		// a generic type with multiple type parameters shows up as an IndexListExpr
+		typeName = in.X
+		typeParams = in.Indices
+	}
+	if typeParams != nil {
+		id, err := typeFromAST(typeName)
+		if err != nil {
+			return Type{}, err
+		}
+		if len(id.Params) > 0 {
+			return Type{}, fmt.Errorf("unexpected type parameters: %v", in)
+		}
+		res := Type{Name: id.Name}
+		for _, typeParam := range typeParams {
+			param, err := typeFromAST(typeParam)
+			if err != nil {
+				return Type{}, err
+			}
+			res.Params = append(res.Params, param.String())
+		}
+		return res, nil
+	}
+	// Non-generic type.
+	buf := new(strings.Builder)
+	err := format.Node(buf, token.NewFileSet(), in)
+	if err != nil {
+		return Type{}, err
+	}
+	return Type{Name: buf.String()}, nil
 }
 
 // Pkg is a parsed build.Package.
@@ -125,20 +218,27 @@ type Pkg struct {
 	recvPkg string
 }
 
+// Spec is ast.TypeSpec with the associated comment map.
+type Spec struct {
+	*ast.TypeSpec
+	ast.CommentMap
+	TypeParams map[string]string
+}
+
 // typeSpec locates the *ast.TypeSpec for type id in the import path.
-func typeSpec(path string, id string, srcDir string) (Pkg, *ast.TypeSpec, error) {
+func typeSpec(path string, typ Type, srcDir string) (Pkg, Spec, error) {
 	var pkg *build.Package
 	var err error
 
 	if path == "" {
 		pkg, err = build.ImportDir(srcDir, 0)
 		if err != nil {
-			return Pkg{}, nil, fmt.Errorf("couldn't find package in %s: %v", srcDir, err)
+			return Pkg{}, Spec{}, fmt.Errorf("couldn't find package in %s: %v", srcDir, err)
 		}
 	} else {
 		pkg, err = build.Import(path, srcDir, 0)
 		if err != nil {
-			return Pkg{}, nil, fmt.Errorf("couldn't find package %s: %v", path, err)
+			return Pkg{}, Spec{}, fmt.Errorf("couldn't find package %s: %v", path, err)
 		}
 	}
 
@@ -159,15 +259,48 @@ func typeSpec(path string, id string, srcDir string) (Pkg, *ast.TypeSpec, error)
 			}
 			for _, spec := range decl.Specs {
 				spec := spec.(*ast.TypeSpec)
-				if spec.Name.Name != id {
+				if spec.Name.Name != typ.Name {
+					continue
+				}
+				typeParams, ok := matchTypeParams(spec, typ.Params)
+				if !ok {
 					continue
 				}
 				p := Pkg{Package: pkg, FileSet: fset}
-				return p, spec, nil
+				s := Spec{TypeSpec: spec, TypeParams: typeParams}
+				return p, s, nil
 			}
 		}
 	}
-	return Pkg{}, nil, fmt.Errorf("type %s not found in %s", id, path)
+	return Pkg{}, Spec{}, fmt.Errorf("type %s not found in %s", typ.Name, path)
+}
+
+// matchTypeParams returns a map of type parameters from a parsed interface
+// definition and the types that fill them from the user's specified type
+// info. If the passed params can't be used to fill the type parameters on the
+// passed type, a nil map and false are returned. No type checking is done,
+// only that there are sufficient types to match.
+func matchTypeParams(spec *ast.TypeSpec, params []string) (map[string]string, bool) {
+	if spec.TypeParams == nil {
+		return nil, true
+	}
+	res := make(map[string]string, len(params))
+	var specParamNames []string
+	for _, typeParam := range spec.TypeParams.List {
+		for _, name := range typeParam.Names {
+			if name == nil {
+				continue
+			}
+			specParamNames = append(specParamNames, name.Name)
+		}
+	}
+	if len(specParamNames) != len(params) {
+		return nil, false
+	}
+	for pos, specParamName := range specParamNames {
+		res[specParamName] = params[pos]
+	}
+	return res, true
 }
 
 // gofmt pretty-prints e.
@@ -203,15 +336,25 @@ func (p Pkg) fullType(e ast.Expr) string {
 	return p.gofmt(e)
 }
 
-func (p Pkg) params(field *ast.Field) []Param {
+func (p Pkg) params(field *ast.Field, typeParams map[string]string) []Param {
 	var params []Param
-	typ := p.fullType(field.Type)
+	var typ string
+	switch expr := field.Type.(type) {
+	case *ast.Ident:
+		if genType, ok := typeParams[expr.Name]; ok {
+			typ = genType
+		} else {
+			typ = p.fullType(field.Type)
+		}
+	default:
+		typ = p.fullType(field.Type)
+	}
 	for _, name := range field.Names {
 		params = append(params, Param{Name: name.Name, Type: typ})
 	}
 	// Handle anonymous params
 	if len(params) == 0 {
-		params = []Param{Param{Type: typ}}
+		params = []Param{{Type: typ}}
 	}
 	return params
 }
@@ -244,12 +387,12 @@ const (
 	WithoutComments EmitComments = false
 )
 
-func (p Pkg) funcsig(f *ast.Field, comments EmitComments) Func {
+func (p Pkg) funcsig(f *ast.Field, typeParams map[string]string, cmap ast.CommentMap, comments EmitComments) Func {
 	fn := Func{Name: f.Names[0].Name}
 	typ := f.Type.(*ast.FuncType)
 	if typ.Params != nil {
 		for _, field := range typ.Params.List {
-			for _, param := range p.params(field) {
+			for _, param := range p.params(field, typeParams) {
 				// only for method parameters:
 				// assign a blank identifier "_" to an anonymous parameter
 				if param.Name == "" {
@@ -261,7 +404,7 @@ func (p Pkg) funcsig(f *ast.Field, comments EmitComments) Func {
 	}
 	if typ.Results != nil {
 		for _, field := range typ.Results.List {
-			fn.Res = append(fn.Res, p.params(field)...)
+			fn.Res = append(fn.Res, p.params(field, typeParams)...)
 		}
 	}
 	if comments == WithComments && f.Doc != nil {
@@ -286,13 +429,13 @@ func funcs(iface, srcDir, recvPkg string, comments EmitComments) ([]Func, error)
 	}
 
 	// Locate the interface.
-	path, id, err := findInterface(iface, srcDir)
+	path, typ, err := findInterface(iface, srcDir)
 	if err != nil {
 		return nil, err
 	}
 
 	// Parse the package and find the interface declaration.
-	p, spec, err := typeSpec(path, id, srcDir)
+	p, spec, err := typeSpec(path, typ, srcDir)
 	if err != nil {
 		return nil, fmt.Errorf("interface %s not found: %s", iface, err)
 	}
@@ -319,7 +462,7 @@ func funcs(iface, srcDir, recvPkg string, comments EmitComments) ([]Func, error)
 			continue
 		}
 
-		fn := p.funcsig(fndecl, comments)
+		fn := p.funcsig(fndecl, spec.TypeParams, spec.CommentMap.Filter(fndecl), comments)
 		fns = append(fns, fn)
 	}
 	return fns, nil
@@ -417,7 +560,7 @@ impl [-dir directory] <recv> <iface>
 		fmt.Fprint(os.Stderr, `
 
 Examples:
-		
+
 impl 'f *File' io.Reader
 impl Murmur hash.Hash
 impl -dir $GOPATH/src/github.com/josharian/impl Murmur hash.Hash
@@ -444,13 +587,13 @@ to prevent shell globbing.
 		}
 	}
 
-	var recvPkg = *flagRecvPkg
+	recvPkg := *flagRecvPkg
 	if recvPkg == "" {
 		//  "   s *Struct   " , receiver: Struct
 		recvs := strings.Fields(recv)
 		receiver := recvs[len(recvs)-1] // note that this correctly handles "s *Struct" and "*Struct"
 		receiver = strings.TrimPrefix(receiver, "*")
-		pkg, _, err := typeSpec("", receiver, *flagSrcDir)
+		pkg, _, err := typeSpec("", Type{Name: receiver}, *flagSrcDir)
 		if err == nil {
 			recvPkg = pkg.Package.Name
 		}

@@ -48,6 +48,42 @@ type Interface3 interface {
 	Method3(arg1, arg2 bool) (result1, result2 bool)
 }
 
+// GenericInterface1 is a dummy interface to test the program output. This
+// interface tests generation of generic interfaces with the specified type
+// parameters.
+type GenericInterface1[Type any] interface {
+	// Method1 is the first method of GenericInterface1.
+	Method1() Type
+	// Method2 is the second method of GenericInterface1.
+	Method2(Type)
+	// Method3 is the third method of GenericInterface1.
+	Method3(Type) Type
+}
+
+// GenericInterface2 is a dummy interface to test the program output. This
+// interface tests generation of generic interfaces with the specified type
+// parameters.
+type GenericInterface2[Type1 any, Type2 comparable] interface {
+	// Method1 is the first method of GenericInterface2.
+	Method1() (Type1, Type2)
+	// Method2 is the second method of GenericInterface2.
+	Method2(Type1, Type2)
+	// Method3 is the third method of GenericInterface2.
+	Method3(Type1) Type2
+}
+
+// GenericInterface3 is a dummy interface to test the program output. This
+// interface tests generation of generic interfaces with repeated type
+// parameters.
+type GenericInterface3[Type1, Type2 any] interface {
+	// Method1 is the first method of GenericInterface3.
+	Method1() (Type1, Type2)
+	// Method2 is the second method of GenericInterface3.
+	Method2(Type1, Type2)
+	// Method3 is the third method of GenericInterface3.
+	Method3(Type1) Type2
+}
+
 // Interface1Output is the expected output generated from reflecting on
 // Interface1, provided that the receiver is equal to 'r *Receiver'.
 var Interface1Output = `// Method1 is the first method of Interface1.
@@ -168,6 +204,66 @@ func (arg1 *Implemented) Method2(_ string, arg2 int) (arg3 error) {
 
 var Interface8Output = `// Method is the first method of Interface6.
 func (arg3 *Implemented) Method2(arg1 string, arg2 int) (_ error) {
+	panic("not implemented") // TODO: Implement
+}
+
+`
+
+// GenericInterface1Output is the expected output generated from reflecting on
+// GenericInterface1, provided that the receiver is equal to 'r *Receiver' and
+// it was generated with the type parameters [string].
+var GenericInterface1Output = `// Method1 is the first method of GenericInterface1.
+func (r *Receiver) Method1() string {
+	panic("not implemented") // TODO: Implement
+}
+
+// Method2 is the second method of GenericInterface1.
+func (r *Receiver) Method2(_ string) {
+	panic("not implemented") // TODO: Implement
+}
+
+// Method3 is the third method of GenericInterface1.
+func (r *Receiver) Method3(_ string) string {
+	panic("not implemented") // TODO: Implement
+}
+
+`
+
+// GenericInterface2Output is the expected output generated from reflecting on
+// GenericInterface2, provided that the receiver is equal to 'r *Receiver' and
+// it was generated with the type parameters [string, bool].
+var GenericInterface2Output = `// Method1 is the first method of GenericInterface2.
+func (r *Receiver) Method1() (string, bool) {
+	panic("not implemented") // TODO: Implement
+}
+
+// Method2 is the second method of GenericInterface2.
+func (r *Receiver) Method2(_ string, _ bool) {
+	panic("not implemented") // TODO: Implement
+}
+
+// Method3 is the third method of GenericInterface2.
+func (r *Receiver) Method3(_ string) bool {
+	panic("not implemented") // TODO: Implement
+}
+
+`
+
+// GenericInterface3Output is the expected output generated from reflecting on
+// GenericInterface3, provided that the receiver is equal to 'r *Receiver' and
+// it was generated with the type parameters [string, bool].
+var GenericInterface3Output = `// Method1 is the first method of GenericInterface3.
+func (r *Receiver) Method1() (string, bool) {
+	panic("not implemented") // TODO: Implement
+}
+
+// Method2 is the second method of GenericInterface3.
+func (r *Receiver) Method2(_ string, _ bool) {
+	panic("not implemented") // TODO: Implement
+}
+
+// Method3 is the third method of GenericInterface3.
+func (r *Receiver) Method3(_ string) bool {
 	panic("not implemented") // TODO: Implement
 }
 
