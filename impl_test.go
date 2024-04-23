@@ -318,11 +318,19 @@ func TestValidReceiver(t *testing.T) {
 		want bool
 	}{
 		{recv: "f", want: true},
+		{recv: "f[T]", want: true},
+		{recv: "f[T, U]", want: true},
 		{recv: "F", want: true},
+		{recv: "*F[T]", want: true},
+		{recv: "*F[T, U]", want: true},
 		{recv: "f F", want: true},
 		{recv: "f *F", want: true},
+		{recv: "f *F[T]", want: true},
+		{recv: "f *F[T, U]", want: true},
 		{recv: "", want: false},
 		{recv: "a+b", want: false},
+		{recv: "[T]", want: false},
+		{recv: "[T, U]", want: false},
 	}
 
 	for _, tt := range cases {
@@ -677,6 +685,20 @@ func TestStubGenerationForImplemented(t *testing.T) {
 			want:    testdata.Interface4Output,
 		},
 		{
+			desc:    "without implemeted methods, with generic receiver",
+			iface:   "github.com/josharian/impl/testdata.Interface3",
+			recv:    "r *ImplementedGeneric[Type1]",
+			recvPkg: "testdata",
+			want:    testdata.Interface4GenericOutput,
+		},
+		{
+			desc:    "without implemeted methods, with generic receiver with multiple params",
+			iface:   "github.com/josharian/impl/testdata.Interface3",
+			recv:    "r *ImplementedGenericMultipleParams[Type1, Type2]",
+			recvPkg: "testdata",
+			want:    testdata.Interface4GenericMultipleParamsOutput,
+		},
+		{
 			desc:    "without implemeted methods and receiver variable",
 			iface:   "github.com/josharian/impl/testdata.Interface3",
 			recv:    "*Implemented",
@@ -691,11 +713,39 @@ func TestStubGenerationForImplemented(t *testing.T) {
 			want:    testdata.Interface5Output,
 		},
 		{
+			desc:    "generic receiver and interface in the same package",
+			iface:   "github.com/josharian/impl/testdata.Interface5",
+			recv:    "r *ImplementedGeneric[Type1]",
+			recvPkg: "testdata",
+			want:    testdata.Interface5GenericOutput,
+		},
+		{
+			desc:    "generic receiver with multiple params and interface in the same package",
+			iface:   "github.com/josharian/impl/testdata.Interface5",
+			recv:    "r *ImplementedGenericMultipleParams[Type1, Type2]",
+			recvPkg: "testdata",
+			want:    testdata.Interface5GenericMultipleParamsOutput,
+		},
+		{
 			desc:    "receiver and interface in a different package",
 			iface:   "github.com/josharian/impl/testdata.Interface5",
 			recv:    "r *Implemented",
 			recvPkg: "test",
 			want:    testdata.Interface6Output,
+		},
+		{
+			desc:    "generic receiver and interface in a different package",
+			iface:   "github.com/josharian/impl/testdata.Interface5",
+			recv:    "r *ImplementedGeneric[Type1]",
+			recvPkg: "test",
+			want:    testdata.Interface6GenericOutput,
+		},
+		{
+			desc:    "generic receiver with multiple params and interface in a different package",
+			iface:   "github.com/josharian/impl/testdata.Interface5",
+			recv:    "r *ImplementedGenericMultipleParams[Type1, Type2]",
+			recvPkg: "test",
+			want:    testdata.Interface6GenericMultipleParamsOutput,
 		},
 	}
 	for _, tt := range cases {

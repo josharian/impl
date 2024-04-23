@@ -268,3 +268,69 @@ func (r *Receiver) Method3(_ string) bool {
 }
 
 `
+
+type ImplementedGeneric[Type1 any] struct{}
+
+func (r *ImplementedGeneric[Type1]) Method1(arg1 string, arg2 string) (result string, err error) {
+	return "", nil
+}
+
+var Interface4GenericOutput = `// Method2 is the second method of Interface3.
+func (r *ImplementedGeneric[Type1]) Method2(_ int, arg2 int) (_ int, err error) {
+	panic("not implemented") // TODO: Implement
+}
+
+// Method3 is the third method of Interface3.
+func (r *ImplementedGeneric[Type1]) Method3(arg1 bool, arg2 bool) (result1 bool, result2 bool) {
+	panic("not implemented") // TODO: Implement
+}
+
+`
+
+var Interface5GenericOutput = `// Method is the first method of Interface5.
+func (r *ImplementedGeneric[Type1]) Method2(arg1 string, arg2 Interface2, arg3 Struct5) (Interface3, error) {
+	panic("not implemented") // TODO: Implement
+}
+
+`
+
+// Interface6GenericOutput receiver not in current package
+var Interface6GenericOutput = `// Method is the first method of Interface5.
+func (r *ImplementedGeneric[Type1]) Method2(arg1 string, arg2 testdata.Interface2, arg3 testdata.Struct5) (testdata.Interface3, error) {
+	panic("not implemented") // TODO: Implement
+}
+
+`
+
+type ImplementedGenericMultipleParams[Type1 any, Type2 comparable] struct{}
+
+func (r *ImplementedGenericMultipleParams[Type1, Type2]) Method1(arg1 string, arg2 string) (result string, err error) {
+	return "", nil
+}
+
+var Interface4GenericMultipleParamsOutput = `// Method2 is the second method of Interface3.
+func (r *ImplementedGenericMultipleParams[Type1, Type2]) Method2(_ int, arg2 int) (_ int, err error) {
+	panic("not implemented") // TODO: Implement
+}
+
+// Method3 is the third method of Interface3.
+func (r *ImplementedGenericMultipleParams[Type1, Type2]) Method3(arg1 bool, arg2 bool) (result1 bool, result2 bool) {
+	panic("not implemented") // TODO: Implement
+}
+
+`
+
+var Interface5GenericMultipleParamsOutput = `// Method is the first method of Interface5.
+func (r *ImplementedGenericMultipleParams[Type1, Type2]) Method2(arg1 string, arg2 Interface2, arg3 Struct5) (Interface3, error) {
+	panic("not implemented") // TODO: Implement
+}
+
+`
+
+// Interface6GenericMultipleParamsOutput receiver not in current package
+var Interface6GenericMultipleParamsOutput = `// Method is the first method of Interface5.
+func (r *ImplementedGenericMultipleParams[Type1, Type2]) Method2(arg1 string, arg2 testdata.Interface2, arg3 testdata.Struct5) (testdata.Interface3, error) {
+	panic("not implemented") // TODO: Implement
+}
+
+`
