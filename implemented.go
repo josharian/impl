@@ -31,8 +31,17 @@ func implementedFuncs(fns []Func, recv string, srcDir string) (map[string]bool, 
 		for _, v := range mf.Recv.List {
 			switch xv := v.Type.(type) {
 			case *ast.StarExpr:
-				if si, ok := xv.X.(*ast.Ident); ok {
-					return si.Name
+				switch xxv := xv.X.(type) {
+				case *ast.Ident:
+					return xxv.Name
+				case *ast.IndexExpr: // type with one type parameter.
+					if si, ok := xxv.X.(*ast.Ident); ok {
+						return si.Name
+					}
+				case *ast.IndexListExpr: // type with mutiple type parameters.
+					if si, ok := xxv.X.(*ast.Ident); ok {
+						return si.Name
+					}
 				}
 			case *ast.Ident:
 				return xv.Name
@@ -82,6 +91,10 @@ func getReceiverType(recv string) string {
 	// VSCode adds a trailing space to receiver (it runs impl like: impl 'r *Receiver ' io.Writer)
 	// so we have to remove spaces.
 	recv = strings.TrimSpace(recv)
+
+	// Remove type parameters. They can contain spaces too, for example 'r *Receiver[T, U]'.
+	recv, _, _ = strings.Cut(recv, "[")
+
 	parts := strings.Split(recv, " ")
 	switch len(parts) {
 	case 1: // (SomeType)
