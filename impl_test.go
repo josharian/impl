@@ -1,6 +1,10 @@
 package main
 
 import (
+	"bytes"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -880,5 +884,24 @@ func TestParseTypeParams(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestOutputFlag(t *testing.T) {
+	tmp := t.TempDir()
+	out := filepath.Join(tmp, "impl-test-out.go")
+	cmd := exec.Command("go", "run", ".", "-o="+out,
+		"t *tester", "github.com/josharian/impl/testdata.Interface1")
+	buf := &bytes.Buffer{}
+	cmd.Stderr = buf
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("unexpected error: %s\n%s", err, buf.String())
+	}
+	fi, err := os.Stat(out)
+	if err != nil {
+		t.Errorf("unexpected error: %s", err)
+	}
+	if fi.Size() == 0 {
+		t.Errorf("generated file %q has 0 size", out)
 	}
 }
