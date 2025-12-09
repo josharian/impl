@@ -37,6 +37,24 @@ func TestFindInterface(t *testing.T) {
 		{input: "gopkg.in/yaml.v2.Unmarshaler", path: "gopkg.in/yaml.v2", typ: Type{Name: "Unmarshaler"}},
 		{input: "github.com/josharian/impl/testdata.GenericInterface1[string]", path: "github.com/josharian/impl/testdata", typ: Type{Name: "GenericInterface1", Params: []string{"string"}}},
 		{input: "github.com/josharian/impl/testdata.GenericInterface1[*string]", path: "github.com/josharian/impl/testdata", typ: Type{Name: "GenericInterface1", Params: []string{"*string"}}},
+		// Qualified type as generic parameter - the path inside brackets should be stripped
+		{input: "github.com/josharian/impl/testdata.GenericInterface1[github.com/josharian/impl/testdata.Struct5]", path: "github.com/josharian/impl/testdata", typ: Type{Name: "GenericInterface1", Params: []string{"testdata.Struct5"}}},
+		// Nested generic: type param is itself a generic type with a path
+		{input: "github.com/josharian/impl/testdata.GenericInterface1[github.com/josharian/impl/testdata.GenericInterface1[string]]", path: "github.com/josharian/impl/testdata", typ: Type{Name: "GenericInterface1", Params: []string{"testdata.GenericInterface1[string]"}}},
+		// Multiple type params where one has a nested generic with path
+		{input: "github.com/josharian/impl/testdata.GenericInterface2[github.com/josharian/impl/testdata.Struct5, github.com/josharian/impl/testdata.GenericInterface1[int]]", path: "github.com/josharian/impl/testdata", typ: Type{Name: "GenericInterface2", Params: []string{"testdata.Struct5", "testdata.GenericInterface1[int]"}}},
+		// Map type as generic param (contains comma-like syntax in brackets)
+		{input: "github.com/josharian/impl/testdata.GenericInterface1[map[string]int]", path: "github.com/josharian/impl/testdata", typ: Type{Name: "GenericInterface1", Params: []string{"map[string]int"}}},
+		// Nested generic with multiple params containing paths - comma inside nested brackets
+		{input: "github.com/josharian/impl/testdata.GenericInterface1[github.com/josharian/impl/testdata.GenericInterface2[string, bool]]", path: "github.com/josharian/impl/testdata", typ: Type{Name: "GenericInterface1", Params: []string{"testdata.GenericInterface2[string, bool]"}}},
+		// Deeply nested with paths at multiple levels
+		{input: "github.com/josharian/impl/testdata.GenericInterface1[github.com/josharian/impl/testdata.GenericInterface2[github.com/josharian/impl/testdata.Struct5, bool]]", path: "github.com/josharian/impl/testdata", typ: Type{Name: "GenericInterface1", Params: []string{"testdata.GenericInterface2[testdata.Struct5, bool]"}}},
+		// Unicode in type names (Go allows Unicode letters in identifiers)
+		{input: "github.com/josharian/impl/testdata.GenericInterface1[github.com/mypkg/日本語.タイプ]", path: "github.com/josharian/impl/testdata", typ: Type{Name: "GenericInterface1", Params: []string{"日本語.タイプ"}}},
+		// Pointer to qualified type (starts with non-path rune *)
+		{input: "github.com/josharian/impl/testdata.GenericInterface1[*github.com/josharian/impl/testdata.Struct5]", path: "github.com/josharian/impl/testdata", typ: Type{Name: "GenericInterface1", Params: []string{"*testdata.Struct5"}}},
+		// Hyphenated package path (hyphens in path segments, not in final package name)
+		{input: "github.com/go-chi/chi.Router[github.com/some-org/pkg.SomeType]", path: "github.com/go-chi/chi", typ: Type{Name: "Router", Params: []string{"pkg.SomeType"}}},
 	}
 
 	for _, tt := range cases {
@@ -647,6 +665,12 @@ func TestStubGeneration(t *testing.T) {
 			want:  testdata.GenericInterface3Output,
 			dir:   "testdata",
 		},
+		// Test generic interface with fully-qualified type param from same package
+		{
+			iface: "github.com/josharian/impl/testdata.GenericInterface1[github.com/josharian/impl/testdata.Struct5]",
+			want:  testdata.GenericInterface1WithQualifiedParamOutput,
+			dir:   ".",
+		},
 	}
 	for _, tt := range cases {
 		t.Run(tt.iface, func(t *testing.T) {
@@ -878,6 +902,46 @@ func TestParseTypeParams(t *testing.T) {
 				if param != tt.want.Params[pos] {
 					t.Errorf("expected param %d to be %q, got %q: %v", pos, tt.want.Params[pos], param, typ.Params)
 				}
+			}
+		})
+	}
+}
+
+func TestStripPaths(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		desc  string
+		input string
+		want  string
+	}{
+		{desc: "no path", input: "Iface", want: "Iface"},
+		{desc: "simple path", input: "a/b.T", want: "b.T"},
+		{desc: "deep path", input: "github.com/foo/bar.T", want: "bar.T"},
+		{desc: "generic with path param", input: "Iface[github.com/foo/bar.T]", want: "Iface[bar.T]"},
+		{desc: "multiple path params", input: "Iface[a/b.T, c/d.U]", want: "Iface[b.T, d.U]"},
+		{desc: "nested generic with paths", input: "Iface[a/b.Other[c/d.T]]", want: "Iface[b.Other[d.T]]"},
+		{desc: "pointer to path type", input: "Iface[*a/b.T]", want: "Iface[*b.T]"},
+		{desc: "map with path types", input: "Iface[map[a/b.K]c/d.V]", want: "Iface[map[b.K]d.V]"},
+		{desc: "slice of path type", input: "Iface[[]a/b.T]", want: "Iface[[]b.T]"},
+		{desc: "chan of path type", input: "Iface[chan a/b.T]", want: "Iface[chan b.T]"},
+		{desc: "func with path types", input: "Iface[func(a/b.T) c/d.U]", want: "Iface[func(b.T) d.U]"},
+		{desc: "deeply nested paths", input: "A[B[C[d/e.F]]]", want: "A[B[C[e.F]]]"},
+		{desc: "hyphenated path", input: "Iface[github.com/go-chi/chi.T]", want: "Iface[chi.T]"},
+		{desc: "unicode identifiers", input: "Iface[a/日本語.タイプ]", want: "Iface[日本語.タイプ]"},
+		{desc: "no slash in path", input: "Iface[pkg.T]", want: "Iface[pkg.T]"},
+		{desc: "empty input", input: "", want: ""},
+		{desc: "complex real-world", input: "ServerStreamingClient[grpc_health_v1.HealthCheckResponse]", want: "ServerStreamingClient[grpc_health_v1.HealthCheckResponse]"},
+		{desc: "complex with full path", input: "ServerStreamingClient[google.golang.org/grpc/health/grpc_health_v1.HealthCheckResponse]", want: "ServerStreamingClient[grpc_health_v1.HealthCheckResponse]"},
+	}
+
+	for _, tt := range cases {
+		tt := tt
+		t.Run(tt.desc, func(t *testing.T) {
+			t.Parallel()
+			got := stripPaths(tt.input)
+			if got != tt.want {
+				t.Errorf("stripPaths(%q) = %q, want %q", tt.input, got, tt.want)
 			}
 		})
 	}

@@ -334,3 +334,24 @@ func (r *ImplementedGenericMultipleParams[Type1, Type2]) Method2(arg1 string, ar
 }
 
 `
+
+// GenericInterface1WithQualifiedParamOutput is the expected output generated
+// from reflecting on GenericInterface1[testdata.Struct5].
+// This tests that qualified type params in the interface specification
+// are correctly stripped to just the package-qualified short name.
+var GenericInterface1WithQualifiedParamOutput = `// Method1 is the first method of GenericInterface1.
+func (r *Receiver) Method1() testdata.Struct5 {
+	panic("not implemented") // TODO: Implement
+}
+
+// Method2 is the second method of GenericInterface1.
+func (r *Receiver) Method2(_ testdata.Struct5) {
+	panic("not implemented") // TODO: Implement
+}
+
+// Method3 is the third method of GenericInterface1.
+func (r *Receiver) Method3(_ testdata.Struct5) testdata.Struct5 {
+	panic("not implemented") // TODO: Implement
+}
+
+`

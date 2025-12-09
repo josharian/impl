@@ -13,9 +13,11 @@ import (
 	"go/token"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"text/template"
+	"unicode"
 
 	"golang.org/x/tools/imports"
 )
@@ -67,6 +69,72 @@ func parseType(in string) (Type, error) {
 	return typeFromAST(expr)
 }
 
+// stripPaths converts full package paths to short qualified names.
+// It identifies path-like segments (sequences of Unicode letters, digits,
+// underscores, dots, and slashes) and strips everything up to and including
+// the last slash in each segment.
+//
+// Examples:
+//
+//	"Iface[github.com/foo/bar.T]" -> "Iface[bar.T]"
+//	"Iface[a/b.T, c/d.U]" -> "Iface[b.T, d.U]"
+//	"Iface[a/b.Other[c/d.T]]" -> "Iface[b.Other[d.T]]"
+//	"Iface[*a/b.T]" -> "Iface[*b.T]"
+func stripPaths(in string) string {
+	runes := []rune(in)
+	out := make([]rune, 0, len(runes))
+	for len(runes) > 0 {
+		// Find extent of path-like segment
+		n := slices.IndexFunc(runes, isNonPathRune)
+		seg := runes
+		if n >= 0 {
+			seg = seg[:n]
+		}
+		if slash := lastIndex(seg, '/'); slash >= 0 {
+			seg = seg[slash+1:]
+		}
+		out = append(out, seg...)
+		if n == -1 {
+			break
+		}
+		runes = runes[n:]
+
+		// Copy non-path runes verbatim
+		n = slices.IndexFunc(runes, isPathRune)
+		seg = runes
+		if n >= 0 {
+			seg = seg[:n]
+		}
+		out = append(out, seg...)
+		if n == -1 {
+			break
+		}
+		runes = runes[n:]
+	}
+	return string(out)
+}
+
+// lastIndex returns the index of the last occurrence of v in s, or -1 if not present.
+func lastIndex[S ~[]E, E comparable](s S, v E) int {
+	for i := len(s) - 1; i >= 0; i-- {
+		if s[i] == v {
+			return i
+		}
+	}
+	return -1
+}
+
+// isPathRune reports whether r can appear in an import path or qualified identifier.
+// This includes Unicode letters (for Go identifiers), digits, underscores,
+// dots (for qualified names), slashes (for import paths), and hyphens (for module paths).
+func isPathRune(r rune) bool {
+	return r == '_' || r == '.' || r == '/' || r == '-' || unicode.IsLetter(r) || unicode.IsDigit(r)
+}
+
+func isNonPathRune(r rune) bool {
+	return !isPathRune(r)
+}
+
 // findInterface returns the import path and type of an interface.
 // For example, given "http.ResponseWriter", findInterface returns
 // "net/http", Type{Name: "ResponseWriter"}.
@@ -86,23 +154,30 @@ func findInterface(input string, srcDir string) (path string, iface Type, err er
 
 	srcPath := filepath.Join(srcDir, "__go_impl__.go")
 
-	if slash := strings.LastIndex(input, "/"); slash > -1 {
-		// package path provided
-		dot := strings.LastIndex(input, ".")
+	// Find the base type (without generic params) to extract package path.
+	// This handles cases like: pkg.Interface[other/pkg.Type]
+	baseInput := input
+	if bracket := strings.Index(input, "["); bracket > -1 {
+		baseInput = input[:bracket]
+	}
+
+	if slash := strings.LastIndex(baseInput, "/"); slash > -1 {
+		// package path provided: expect "path/to/pkg.TypeName"
 		// make sure iface does not end with "/" (e.g. reject net/http/)
-		if slash+1 == len(input) {
+		if slash+1 == len(baseInput) {
 			return "", Type{}, fmt.Errorf("interface name cannot end with a '/' character: %s", input)
 		}
+		dot := strings.LastIndex(baseInput, ".")
 		// make sure iface does not end with "." (e.g. reject net/http.)
-		if dot+1 == len(input) {
+		if dot+1 == len(baseInput) {
 			return "", Type{}, fmt.Errorf("interface name cannot end with a '.' character: %s", input)
 		}
 		// make sure iface has at least one "." after "/" (e.g. reject net/http/httputil)
-		if strings.Count(input[slash:], ".") == 0 {
+		if dot <= slash {
 			return "", Type{}, fmt.Errorf("invalid interface name: %s", input)
 		}
-		path = input[:dot]
-		id := input[dot+1:]
+		path = baseInput[:dot]
+		id := stripPaths(input[dot+1:])
 		iface, err = parseType(id)
 		if err != nil {
 			return "", Type{}, err
