@@ -58,7 +58,6 @@ func TestFindInterface(t *testing.T) {
 	}
 
 	for _, tt := range cases {
-		tt := tt
 		t.Run(tt.input, func(t *testing.T) {
 			t.Parallel()
 			path, typ, err := findInterface(tt.input, ".")
@@ -303,7 +302,6 @@ func TestFuncs(t *testing.T) {
 	}
 
 	for _, tt := range cases {
-		tt := tt
 		t.Run(tt.iface, func(t *testing.T) {
 			t.Parallel()
 			fns, err := funcs(tt.iface, "", "", tt.comments)
@@ -881,7 +879,6 @@ func TestParseTypeParams(t *testing.T) {
 		// https://cs.opensource.google/go/go/+/master:src/go/parser/parser.go;l=1048;drc=cafb49ac731f862f386862d64b27b8314eeb2909
 	}
 	for _, tt := range cases {
-		tt := tt
 		t.Run(tt.desc, func(t *testing.T) {
 			t.Parallel()
 
@@ -936,7 +933,6 @@ func TestStripPaths(t *testing.T) {
 	}
 
 	for _, tt := range cases {
-		tt := tt
 		t.Run(tt.desc, func(t *testing.T) {
 			t.Parallel()
 			got := stripPaths(tt.input)

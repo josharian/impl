@@ -1,6 +1,6 @@
 module github.com/josharian/impl
 
-go 1.18
+go 1.23
 
 require golang.org/x/tools v0.17.0
 
