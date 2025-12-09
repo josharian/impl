@@ -3,6 +3,7 @@ package main
 
 import (
 	"bytes"
+	"errors"
 	"flag"
 	"fmt"
 	"go/ast"
@@ -67,6 +68,145 @@ func parseType(in string) (Type, error) {
 	return typeFromAST(expr)
 }
 
+type parserState int
+
+const (
+	PARSER_STATE_READ_INTERFACE parserState = iota
+	PARSER_STATE_READ_GENERIC_TYPES
+	PARSER_STATE_DONE
+)
+
+func parsePackageAndType(input string) (string, string, error) {
+	if input == "map" {
+		return "", "", errors.New("map is not an interface")
+	}
+	dotIndex := strings.LastIndex(input, ".")
+	if dotIndex == -1 {
+		return "", input, nil
+	}
+	return input[:dotIndex], input[dotIndex+1:], nil
+}
+
+func removePackages(input string) (string, []string, error) {
+	var pkgs []string
+
+	var typeStr strings.Builder
+	var currentSegment strings.Builder
+	var currentPkg strings.Builder
+
+	numSegsInCurrPkg := 0
+
+	state := PARSER_STATE_READ_INTERFACE
+
+	var handleFinishSegment = func() error {
+		pkg, typ, err := parsePackageAndType(currentSegment.String())
+		if err != nil {
+			return err
+		}
+		currentSegment.Reset()
+
+		hasPath := numSegsInCurrPkg > 0
+		isJustType := len(pkg) == 0
+		if hasPath && isJustType {
+			return errors.New("unqualified type with path is invalid")
+		}
+
+		isPathQualified := hasPath && !isJustType
+		isSimpleType := !hasPath && isJustType
+
+		// If the type has a full path or it is just a type (e.g. int) we
+		// don't want to write a qualified type. Either the type will be qualified
+		// with the pkg path or it is a local type/keywork
+		if isPathQualified || isSimpleType {
+			typeStr.WriteString(typ)
+		}
+
+		if !isPathQualified && !isSimpleType {
+			typeStr.WriteString(pkg)
+			typeStr.WriteRune('.')
+			typeStr.WriteString(typ)
+		}
+
+		if isPathQualified {
+			currentPkg.WriteRune('/')
+			currentPkg.WriteString(pkg)
+			numSegsInCurrPkg++
+		}
+
+		pkg = strings.TrimLeft(currentPkg.String(), "/")
+		if len(pkg) != 0 {
+			pkgs = append(pkgs, strings.TrimLeft(currentPkg.String(), "/"))
+		}
+		currentPkg.Reset()
+		numSegsInCurrPkg = 0
+
+		return nil
+	}
+
+	for _, char := range input {
+		switch state {
+		case PARSER_STATE_READ_INTERFACE:
+			switch char {
+			case '/':
+				currentPkg.WriteByte('/')
+				currentPkg.WriteString(currentSegment.String())
+				currentSegment.Reset()
+				numSegsInCurrPkg++
+			case '[':
+				if currentSegment.Len() < 1 {
+					return "", []string{}, errors.New("expected type name, got: [")
+				}
+				state = PARSER_STATE_READ_GENERIC_TYPES
+
+				err := handleFinishSegment()
+				typeStr.WriteRune(char)
+				if err != nil {
+					return "", []string{}, err
+				}
+			default:
+				currentSegment.WriteRune(char)
+			}
+		case PARSER_STATE_READ_GENERIC_TYPES:
+			switch char {
+			case '/':
+				currentPkg.WriteByte('/')
+				currentPkg.WriteString(currentSegment.String())
+				currentSegment.Reset()
+
+			case ',':
+				err := handleFinishSegment()
+				typeStr.WriteRune(char)
+				if err != nil {
+					return "", []string{}, err
+				}
+			case ']':
+				err := handleFinishSegment()
+				typeStr.WriteRune(char)
+				if err != nil {
+					return "", []string{}, err
+				}
+
+				state = PARSER_STATE_DONE
+			default:
+				currentSegment.WriteRune(char)
+			}
+		case PARSER_STATE_DONE:
+			return typeStr.String(), pkgs, nil
+		}
+	}
+
+	switch state {
+	case PARSER_STATE_READ_INTERFACE:
+		err := handleFinishSegment()
+		if err != nil {
+			return "", []string{}, err
+		}
+	case PARSER_STATE_DONE:
+	}
+
+	return typeStr.String(), pkgs, nil
+}
+
 // findInterface returns the import path and type of an interface.
 // For example, given "http.ResponseWriter", findInterface returns
 // "net/http", Type{Name: "ResponseWriter"}.
@@ -84,38 +224,26 @@ func findInterface(input string, srcDir string) (path string, iface Type, err er
 		return "", Type{}, fmt.Errorf("couldn't parse interface: %s", input)
 	}
 
-	srcPath := filepath.Join(srcDir, "__go_impl__.go")
+	typ, pkgs, err := removePackages(input)
+	if err != nil {
+		return "", Type{}, err
+	}
 
-	if slash := strings.LastIndex(input, "/"); slash > -1 {
-		// package path provided
-		dot := strings.LastIndex(input, ".")
-		// make sure iface does not end with "/" (e.g. reject net/http/)
-		if slash+1 == len(input) {
-			return "", Type{}, fmt.Errorf("interface name cannot end with a '/' character: %s", input)
-		}
-		// make sure iface does not end with "." (e.g. reject net/http.)
-		if dot+1 == len(input) {
-			return "", Type{}, fmt.Errorf("interface name cannot end with a '.' character: %s", input)
-		}
-		// make sure iface has at least one "." after "/" (e.g. reject net/http/httputil)
-		if strings.Count(input[slash:], ".") == 0 {
-			return "", Type{}, fmt.Errorf("invalid interface name: %s", input)
-		}
-		path = input[:dot]
-		id := input[dot+1:]
-		iface, err = parseType(id)
+	if len(pkgs) > 0 {
+		iface, err = parseType(typ)
 		if err != nil {
 			return "", Type{}, err
 		}
-		return path, iface, nil
+		return pkgs[0], iface, nil
 	}
 
-	src := []byte("package hack\n" + "var i " + input)
+	srcPath := filepath.Join(srcDir, "__go_impl__.go")
+	src := []byte("package hack\n" + "var i " + typ)
 	// If we couldn't determine the import path, goimports will
 	// auto fix the import path.
 	imp, err := imports.Process(srcPath, src, nil)
 	if err != nil {
-		return "", Type{}, fmt.Errorf("couldn't parse interface: %s", input)
+		return "", Type{}, fmt.Errorf("couldn't parse interface: %s", typ)
 	}
 
 	// imp should now contain an appropriate import.
@@ -126,10 +254,10 @@ func findInterface(input string, srcDir string) (path string, iface Type, err er
 		panic(err)
 	}
 
-	qualified := strings.Contains(input, ".")
+	qualified := strings.Contains(typ, ".")
 
 	if len(f.Imports) == 0 && qualified {
-		return "", Type{}, fmt.Errorf("unrecognized interface: %s", input)
+		return "", Type{}, fmt.Errorf("unrecognized interface: %s", typ)
 	}
 
 	if !qualified {

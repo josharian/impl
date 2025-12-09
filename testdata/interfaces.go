@@ -84,6 +84,8 @@ type GenericInterface3[Type1, Type2 any] interface {
 	Method3(Type1) Type2
 }
 
+type BaseStruct struct{}
+
 // Interface1Output is the expected output generated from reflecting on
 // Interface1, provided that the receiver is equal to 'r *Receiver'.
 var Interface1Output = `// Method1 is the first method of Interface1.

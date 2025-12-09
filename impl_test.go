@@ -2,6 +2,7 @@ package main
 
 import (
 	"reflect"
+	"sort"
 	"strings"
 	"testing"
 
@@ -15,6 +16,56 @@ func (b errBool) String() string {
 		return "an error"
 	}
 	return "no error"
+}
+
+func TestRemovePackages(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		input            string
+		expectedType     string
+		expectedPackages []string
+		expectError      bool
+	}{
+		{"int", "int", []string{}, false},
+		{"string", "string", []string{}, false},
+		{"[]string", "", []string{}, true},
+		{"map[string]string", "", []string{}, true},
+		{"map[int]int", "", []string{}, true},
+		{"net.Conn", "net.Conn", []string{}, false},
+		{"http.ResponseWriter", "http.ResponseWriter", []string{}, false},
+		{"t[K,U]", "t[K,U]", []string{}, false},
+		{"a/b/c/pkg.Typ", "Typ", []string{"a/b/c/pkg"}, false},
+		{"gopkg.in/yaml.v2.Unmarshaler", "Unmarshaler", []string{"gopkg.in/yaml.v2"}, false},
+		{"github.com/josharian/impl/testdata.GenericInterface1[string]", "GenericInterface1[string]", []string{"github.com/josharian/impl/testdata"}, false},
+		{"github.com/josharian/impl/testdata.GenericInterface1[testdata.TestDataStruct]", "GenericInterface1[testdata.TestDataStruct]", []string{"github.com/josharian/impl/testdata"}, false},
+	}
+
+	for _, c := range cases {
+		tt := c
+		t.Run(tt.input, func(t *testing.T) {
+			t.Parallel()
+			typ, pkgs, err := removePackages(tt.input)
+			if err != nil && !tt.expectError {
+				t.Errorf("remove(%q): was not expecting error: %v", tt.input, err)
+			}
+			if err == nil && tt.expectError {
+				t.Errorf("remove(%q): was expecting error but did not receive one", tt.input)
+			}
+			if typ != tt.expectedType {
+				t.Errorf("remove(%q): type %s does not match expected type %s", tt.input, typ, tt.expectedType)
+			}
+			if len(pkgs) != len(tt.expectedPackages) {
+				t.Errorf("remove(%q): number of packages %d does not match expected number %d", tt.input, len(pkgs), len(tt.expectedPackages))
+			}
+			sort.Strings(pkgs)
+			sort.Strings(tt.expectedPackages)
+			for i, val := range pkgs {
+				if val != tt.expectedPackages[i] {
+					t.Errorf("remove(%q): package %s does not match expected package %s", tt.input, val, tt.expectedPackages[i])
+				}
+			}
+		})
+	}
 }
 
 func TestFindInterface(t *testing.T) {
@@ -37,6 +88,8 @@ func TestFindInterface(t *testing.T) {
 		{input: "gopkg.in/yaml.v2.Unmarshaler", path: "gopkg.in/yaml.v2", typ: Type{Name: "Unmarshaler"}},
 		{input: "github.com/josharian/impl/testdata.GenericInterface1[string]", path: "github.com/josharian/impl/testdata", typ: Type{Name: "GenericInterface1", Params: []string{"string"}}},
 		{input: "github.com/josharian/impl/testdata.GenericInterface1[*string]", path: "github.com/josharian/impl/testdata", typ: Type{Name: "GenericInterface1", Params: []string{"*string"}}},
+		{input: "github.com/josharian/impl/testdata.GenericInterface1[github.com/josharian/impl/testdata.BaseStruct]", path: "github.com/josharian/impl/testdata", typ: Type{Name: "GenericInterface1", Params: []string{"testdata.BaseStruct"}}},
+		{input: "github.com/josharian/impl/testdata.GenericInterface1[testdata.BaseStruct]", path: "github.com/josharian/impl/testdata", typ: Type{Name: "GenericInterface1", Params: []string{"testdata.BaseStruct"}}},
 	}
 
 	for _, tt := range cases {
