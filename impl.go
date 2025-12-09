@@ -124,11 +124,10 @@ func lastIndex[S ~[]E, E comparable](s S, v E) int {
 	return -1
 }
 
-// isPathRune reports whether r can appear in an import path or qualified identifier.
-// This includes Unicode letters (for Go identifiers), digits, underscores,
-// dots (for qualified names), slashes (for import paths), and hyphens (for module paths).
+// isPathRune reports whether r can appear in an import path.
+// See https://go.dev/ref/spec#Import_declarations.
 func isPathRune(r rune) bool {
-	return r == '_' || r == '.' || r == '/' || r == '-' || unicode.IsLetter(r) || unicode.IsDigit(r)
+	return unicode.IsPrint(r) && !strings.ContainsRune(" \uFFFD!\"#$%&'()*,:;<=>?[\\]^`{|}", r)
 }
 
 func isNonPathRune(r rune) bool {

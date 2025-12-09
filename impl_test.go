@@ -930,6 +930,33 @@ func TestStripPaths(t *testing.T) {
 		{desc: "empty input", input: "", want: ""},
 		{desc: "complex real-world", input: "ServerStreamingClient[grpc_health_v1.HealthCheckResponse]", want: "ServerStreamingClient[grpc_health_v1.HealthCheckResponse]"},
 		{desc: "complex with full path", input: "ServerStreamingClient[google.golang.org/grpc/health/grpc_health_v1.HealthCheckResponse]", want: "ServerStreamingClient[grpc_health_v1.HealthCheckResponse]"},
+
+		// Import path character tests per Go spec (https://go.dev/ref/spec#Import_declarations)
+		// Valid: Unicode L, M, N, P, S categories (graphic chars without spaces),
+		// excluding !"#$%&'()*,:;<=>?[\]^`{|} and U+FFFD
+
+		// Tilde is valid in paths (symbol category, not excluded)
+		{desc: "tilde in path", input: "Iface[example.com/foo~bar/pkg.T]", want: "Iface[pkg.T]"},
+		// Plus sign is valid (symbol category, not excluded)
+		{desc: "plus in path", input: "Iface[example.com/foo+bar/pkg.T]", want: "Iface[pkg.T]"},
+		// At sign is valid (symbol category, not excluded)
+		{desc: "at sign in path", input: "Iface[example.com/foo@v1/pkg.T]", want: "Iface[pkg.T]"},
+
+		// Excluded characters should terminate path segment (punctuation but in exclusion list)
+		// Equals sign is excluded - path ends at =
+		{desc: "equals terminates path", input: "Iface[a/b=c.T]", want: "Iface[b=c.T]"},
+		// Exclamation mark is excluded - path ends at !
+		{desc: "exclamation terminates path", input: "Iface[a/b!c.T]", want: "Iface[b!c.T]"},
+		// Semicolon is excluded - path ends at ;
+		{desc: "semicolon terminates path", input: "Iface[a/b;c.T]", want: "Iface[b;c.T]"},
+		// Question mark is excluded
+		{desc: "question mark terminates path", input: "Iface[a/b?c.T]", want: "Iface[b?c.T]"},
+		// Colon is excluded
+		{desc: "colon terminates path", input: "Iface[a/b:c.T]", want: "Iface[b:c.T]"},
+		// Space terminates path (spec says "graphic chars without spaces")
+		{desc: "space terminates path", input: "Iface[a/b c.T]", want: "Iface[b c.T]"},
+		// Unicode replacement character U+FFFD is excluded
+		{desc: "replacement char terminates path", input: "Iface[a/b\uFFFDc.T]", want: "Iface[b\uFFFDc.T]"},
 	}
 
 	for _, tt := range cases {
