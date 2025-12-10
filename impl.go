@@ -141,8 +141,7 @@ func lastIndex[S ~[]E, E comparable](s S, v E) int {
 // isPathRune reports whether r can appear in an import path.
 // See https://go.dev/ref/spec#Import_declarations.
 func isPathRune(r rune) bool {
-	return unicode.IsPrint(r) &&
-		!strings.ContainsRune(" \uFFFD!\"#$%&'()*,:;<=>?[\\]^`{|}", r)
+	return unicode.IsPrint(r) && !strings.ContainsRune(" \uFFFD!\"#$%&'()*,:;<=>?[\\]^`{|}", r)
 }
 
 func isNonPathRune(r rune) bool {
