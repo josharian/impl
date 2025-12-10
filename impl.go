@@ -113,12 +113,8 @@ func stripPaths(in string) string {
 		if n >= 0 {
 			seg = seg[:n]
 		}
-		if n > 0 && seg[0] == '"' {
-			seg = seg[1:]
-		}
-		if n > 1 && seg[len(seg)-1] == '"' {
-			seg = seg[:len(seg)-1]
-		}
+		seg = trimPathPrefix(seg)
+		seg = trimPathSuffix(seg)
 		out = append(out, seg...)
 		if n == -1 {
 			break
@@ -126,6 +122,30 @@ func stripPaths(in string) string {
 		runes = runes[n:]
 	}
 	return string(out)
+}
+
+func trimPathSuffix(p []rune) []rune {
+	if len(p) == 0 {
+		return p
+	}
+
+	if p[len(p)-1] != '"' {
+		return p
+	}
+
+	return p[:len(p)-1]
+}
+
+func trimPathPrefix(p []rune) []rune {
+	if len(p) == 0 {
+		return p
+	}
+
+	if p[0] != '"' {
+		return p
+	}
+
+	return p[1:]
 }
 
 // lastIndex returns the index of the last occurrence of v in s, or -1 if not present.
