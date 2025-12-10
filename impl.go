@@ -85,6 +85,11 @@ func stripPaths(in string) string {
 	out := make([]rune, 0, len(runes))
 	for len(runes) > 0 {
 		// Find extent of path-like segment
+		isQuotedPath := false
+		if runes[0] == '"' {
+			runes = runes[1:]
+			isQuotedPath = true
+		}
 		n := slices.IndexFunc(runes, isNonPathRune)
 		seg := runes
 		if n >= 0 {
@@ -98,12 +103,21 @@ func stripPaths(in string) string {
 			break
 		}
 		runes = runes[n:]
+		if isQuotedPath && len(runes) > 0 {
+			runes = runes[1:]
+		}
 
 		// Copy non-path runes verbatim
 		n = slices.IndexFunc(runes, isPathRune)
 		seg = runes
 		if n >= 0 {
 			seg = seg[:n]
+		}
+		if n > 0 && seg[0] == '"' {
+			seg = seg[1:]
+		}
+		if n > 1 && seg[len(seg)-1] == '"' {
+			seg = seg[:len(seg)-1]
 		}
 		out = append(out, seg...)
 		if n == -1 {
@@ -127,7 +141,8 @@ func lastIndex[S ~[]E, E comparable](s S, v E) int {
 // isPathRune reports whether r can appear in an import path.
 // See https://go.dev/ref/spec#Import_declarations.
 func isPathRune(r rune) bool {
-	return unicode.IsPrint(r) && !strings.ContainsRune(" \uFFFD!\"#$%&'()*,:;<=>?[\\]^`{|}", r)
+	return unicode.IsPrint(r) &&
+		!strings.ContainsRune(" \uFFFD!\"#$%&'()*,:;<=>?[\\]^`{|}", r)
 }
 
 func isNonPathRune(r rune) bool {
