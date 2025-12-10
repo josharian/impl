@@ -190,7 +190,7 @@ func findInterface(input string, srcDir string) (path string, iface Type, err er
 		if dot <= slash {
 			return "", Type{}, fmt.Errorf("invalid interface name: %s", input)
 		}
-		path = baseInput[:dot]
+		path = strings.Trim(baseInput[:dot], "\"")
 		id := stripPaths(input[dot+1:])
 		iface, err = parseType(id)
 		if err != nil {

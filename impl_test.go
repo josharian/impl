@@ -34,6 +34,7 @@ func TestFindInterface(t *testing.T) {
 		{input: "a/b/c/pkg", wantErr: true},
 		{input: "a/b/c/pkg.", wantErr: true},
 		{input: "a/b/c/pkg.Typ", path: "a/b/c/pkg", typ: Type{Name: "Typ"}},
+		{input: "\"a/b/c/pkg\".Typ", path: "a/b/c/pkg", typ: Type{Name: "Typ"}},
 		{input: "gopkg.in/yaml.v2.Unmarshaler", path: "gopkg.in/yaml.v2", typ: Type{Name: "Unmarshaler"}},
 		{input: "github.com/josharian/impl/testdata.GenericInterface1[string]", path: "github.com/josharian/impl/testdata", typ: Type{Name: "GenericInterface1", Params: []string{"string"}}},
 		{input: "github.com/josharian/impl/testdata.GenericInterface1[*string]", path: "github.com/josharian/impl/testdata", typ: Type{Name: "GenericInterface1", Params: []string{"*string"}}},
