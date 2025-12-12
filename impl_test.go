@@ -34,6 +34,7 @@ func TestFindInterface(t *testing.T) {
 		{input: "a/b/c/pkg", wantErr: true},
 		{input: "a/b/c/pkg.", wantErr: true},
 		{input: "a/b/c/pkg.Typ", path: "a/b/c/pkg", typ: Type{Name: "Typ"}},
+		{input: `"a/b/c/pkg".Typ`, path: "a/b/c/pkg", typ: Type{Name: "Typ"}},
 		{input: "gopkg.in/yaml.v2.Unmarshaler", path: "gopkg.in/yaml.v2", typ: Type{Name: "Unmarshaler"}},
 		{input: "github.com/josharian/impl/testdata.GenericInterface1[string]", path: "github.com/josharian/impl/testdata", typ: Type{Name: "GenericInterface1", Params: []string{"string"}}},
 		{input: "github.com/josharian/impl/testdata.GenericInterface1[*string]", path: "github.com/josharian/impl/testdata", typ: Type{Name: "GenericInterface1", Params: []string{"*string"}}},
@@ -55,6 +56,17 @@ func TestFindInterface(t *testing.T) {
 		{input: "github.com/josharian/impl/testdata.GenericInterface1[*github.com/josharian/impl/testdata.Struct5]", path: "github.com/josharian/impl/testdata", typ: Type{Name: "GenericInterface1", Params: []string{"*testdata.Struct5"}}},
 		// Hyphenated package path (hyphens in path segments, not in final package name)
 		{input: "github.com/go-chi/chi.Router[github.com/some-org/pkg.SomeType]", path: "github.com/go-chi/chi", typ: Type{Name: "Router", Params: []string{"pkg.SomeType"}}},
+
+		// Quoted path edge cases - unbalanced/double quotes
+		//// missing closing quote
+		//{input: `"a/b/c/pkg.Typ`, wantErr: true},
+		//// missing opening quote
+		//{input: `a/b/c/pkg".Typ`, wantErr: true},
+		//// quote after type name
+		//{input: `"a/b/c/pkg.Typ"`, wantErr: true},
+		//// double quotes
+		//{input: `""a/b/c/pkg"".Typ`, wantErr: true},
+		//{input: `"github.com/josharian/impl/testdata".Interface1`, path: "github.com/josharian/impl/testdata", typ: Type{Name: "Interface1"}},
 	}
 
 	for _, tt := range cases {
@@ -693,35 +705,35 @@ func TestStubGenerationForImplemented(t *testing.T) {
 		want    string
 	}{
 		{
-			desc:    "without implemeted methods",
+			desc:    "without implemented methods",
 			iface:   "github.com/josharian/impl/testdata.Interface3",
 			recv:    "r *Implemented",
 			recvPkg: "testdata",
 			want:    testdata.Interface4Output,
 		},
 		{
-			desc:    "without implemeted methods with trailing space",
+			desc:    "without implemented methods with trailing space",
 			iface:   "github.com/josharian/impl/testdata.Interface3",
 			recv:    "r *Implemented ",
 			recvPkg: "testdata",
 			want:    testdata.Interface4Output,
 		},
 		{
-			desc:    "without implemeted methods, with generic receiver",
+			desc:    "without implemented methods, with generic receiver",
 			iface:   "github.com/josharian/impl/testdata.Interface3",
 			recv:    "r *ImplementedGeneric[Type1]",
 			recvPkg: "testdata",
 			want:    testdata.Interface4GenericOutput,
 		},
 		{
-			desc:    "without implemeted methods, with generic receiver with multiple params",
+			desc:    "without implemented methods, with generic receiver with multiple params",
 			iface:   "github.com/josharian/impl/testdata.Interface3",
 			recv:    "r *ImplementedGenericMultipleParams[Type1, Type2]",
 			recvPkg: "testdata",
 			want:    testdata.Interface4GenericMultipleParamsOutput,
 		},
 		{
-			desc:    "without implemeted methods and receiver variable",
+			desc:    "without implemented methods and receiver variable",
 			iface:   "github.com/josharian/impl/testdata.Interface3",
 			recv:    "*Implemented",
 			recvPkg: "testdata",
@@ -911,11 +923,22 @@ func TestStripPaths(t *testing.T) {
 		desc  string
 		input string
 		want  string
+		wantErr bool
 	}{
 		{desc: "no path", input: "Iface", want: "Iface"},
 		{desc: "simple path", input: "a/b.T", want: "b.T"},
+		{desc: "simple quoted path", input: `"a/b".T`, want: "b.T"},
+		{desc: "simple unbalacned quote path", input: "\"a/b.T", wantErr: true},
+		{desc: "simple unbalacned quote path 2", input: "a/b\".T", wantErr: true},
+		{desc: "simple double quote path", input: "\"\"a/b\"\".T", wantErr: true},
+		{desc: "simple unbalanced double quote path", input: "a/b\"\".T", wantErr: true},
+		{desc: "simple unbalanced double quote path 2", input: "\"\"a/b.T", wantErr: true},
 		{desc: "deep path", input: "github.com/foo/bar.T", want: "bar.T"},
+		{desc: "deep quoted path", input: `"github.com/foo/bar".T`, want: "bar.T"},
 		{desc: "generic with path param", input: "Iface[github.com/foo/bar.T]", want: "Iface[bar.T]"},
+		{desc: "generic and interface with path param", input: "github.com/foo.Iface[github.com/foo/bar.T]", want: "foo.Iface[bar.T]"},
+		{desc: "generic and interface with quoted path param", input: `"github.com/foo".Iface["github.com/foo/bar".T]`, want: "foo.Iface[bar.T]"},
+		{desc: "generic with quoted path param", input: `Iface["github.com/foo/bar".T]`, want: "Iface[bar.T]"},
 		{desc: "multiple path params", input: "Iface[a/b.T, c/d.U]", want: "Iface[b.T, d.U]"},
 		{desc: "nested generic with paths", input: "Iface[a/b.Other[c/d.T]]", want: "Iface[b.Other[d.T]]"},
 		{desc: "pointer to path type", input: "Iface[*a/b.T]", want: "Iface[*b.T]"},
@@ -962,7 +985,13 @@ func TestStripPaths(t *testing.T) {
 	for _, tt := range cases {
 		t.Run(tt.desc, func(t *testing.T) {
 			t.Parallel()
-			got := stripPaths(tt.input)
+			got, err := stripPaths(tt.input)
+			if err == nil && tt.wantErr {
+				t.Errorf("stripPaths(%q) = %q, want error", tt.input, got)
+			}
+			if err != nil && !tt.wantErr {
+				t.Errorf("stripPaths(%q) = got error %v, want %q", tt.input, err, tt.want)
+			}
 			if got != tt.want {
 				t.Errorf("stripPaths(%q) = %q, want %q", tt.input, got, tt.want)
 			}
