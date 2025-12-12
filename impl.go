@@ -99,21 +99,21 @@ func parseType(in string) (Type, error) {
 //   c. Strip second quote
 // 3. etc
 func stripPaths(in string) (string, error) {
-	runes := []rune(in)
-	out := make([]rune, 0, len(runes))
+	remain := []rune(in)
+	out := make([]rune, 0, len(remain))
 	quotesRemoved := 0
 
-	for len(runes) > 0 {
+	for len(remain) > 0 {
 		var seg []rune
 		var more bool
 
-		seg, runes, more = getPathSeg(runes)
+		seg, remain, more = getPathSeg(remain)
 		out = append(out, seg...)
 		if !more {
 			break
 		}
 
-		seg, runes, more = getNonPathSeg(runes, &quotesRemoved)
+		seg, remain, more = getNonPathSeg(remain, &quotesRemoved)
 		// Check for remaining quote in segment. This is to handle
 		// double quotes
 		if checkForQuote(seg) {
