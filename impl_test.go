@@ -56,6 +56,12 @@ func TestFindInterface(t *testing.T) {
 		{input: "github.com/josharian/impl/testdata.GenericInterface1[*github.com/josharian/impl/testdata.Struct5]", path: "github.com/josharian/impl/testdata", typ: Type{Name: "GenericInterface1", Params: []string{"*testdata.Struct5"}}},
 		// Hyphenated package path (hyphens in path segments, not in final package name)
 		{input: "github.com/go-chi/chi.Router[github.com/some-org/pkg.SomeType]", path: "github.com/go-chi/chi", typ: Type{Name: "Router", Params: []string{"pkg.SomeType"}}},
+		// Quoted path edge cases - unbalanced quotes
+		{input: `"a/b/c/pkg.Typ`, wantErr: true},              // missing closing quote
+		{input: `a/b/c/pkg".Typ`, wantErr: true},              // missing opening quote
+		{input: `"a/b/c/pkg.Typ"`, wantErr: true},             // quote after type name
+		{input: `""a/b/c/pkg"".Typ`, wantErr: true},           // double quotes
+		{input: `"github.com/josharian/impl/testdata".Interface1`, path: "github.com/josharian/impl/testdata", typ: Type{Name: "Interface1"}},
 	}
 
 	for _, tt := range cases {
@@ -912,10 +918,16 @@ func TestStripPaths(t *testing.T) {
 		desc  string
 		input string
 		want  string
+		wantErr bool
 	}{
 		{desc: "no path", input: "Iface", want: "Iface"},
 		{desc: "simple path", input: "a/b.T", want: "b.T"},
 		{desc: "simple quoted path", input: `"a/b".T`, want: "b.T"},
+		{desc: "simple unbalacned quote path", input: "\"a/b.T", wantErr: true},
+		{desc: "simple unbalacned quote path 2", input: "a/b\".T", wantErr: true},
+		{desc: "simple double quote path", input: "\"\"a/b\"\".T", wantErr: true},
+		{desc: "simple unbalanced double quote path", input: "a/b\"\".T", wantErr: true},
+		{desc: "simple unbalanced double quote path 2", input: "\"\"a/b.T", wantErr: true},
 		{desc: "deep path", input: "github.com/foo/bar.T", want: "bar.T"},
 		{desc: "deep quoted path", input: `"github.com/foo/bar".T`, want: "bar.T"},
 		{desc: "generic with path param", input: "Iface[github.com/foo/bar.T]", want: "Iface[bar.T]"},
@@ -968,7 +980,13 @@ func TestStripPaths(t *testing.T) {
 	for _, tt := range cases {
 		t.Run(tt.desc, func(t *testing.T) {
 			t.Parallel()
-			got := stripPaths(tt.input)
+			got, err := stripPaths(tt.input)
+			if err == nil && tt.wantErr {
+				t.Errorf("stripPaths(%q) = %q, want error", tt.input, got)
+			}
+			if err != nil && !tt.wantErr {
+				t.Errorf("stripPaths(%q) = got error %v, want %q", tt.input, err, tt.want)
+			}
 			if got != tt.want {
 				t.Errorf("stripPaths(%q) = %q, want %q", tt.input, got, tt.want)
 			}
