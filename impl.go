@@ -80,49 +80,100 @@ func parseType(in string) (Type, error) {
 //	"Iface[a/b.T, c/d.U]" -> "Iface[b.T, d.U]"
 //	"Iface[a/b.Other[c/d.T]]" -> "Iface[b.Other[d.T]]"
 //	"Iface[*a/b.T]" -> "Iface[*b.T]"
+// For more examples, see the tests in impl_test.go
+//
+// Because of the staggered parsing, the handling of quoted paths is done in
+// a way that supports seeing the start and end quote in separate loop
+// iterations.
+//
+// Algorithm Example:
+// Given: "github.com/foo".Iface
+//
+// 1. First iteration
+//   a. Grab all path characters (none, because " is first)
+//   b. Grab all non-path characters (")
+//   c. Strip quotes (remove only the one)
+// 2. Second iteration
+//   a. Grab all path characters (github.com/foo)
+//   b. Grab all non-path characters (")
+//   c. Strip second quote
+// 3. etc
 func stripPaths(in string) (string, error) {
 	runes := []rune(in)
 	out := make([]rune, 0, len(runes))
 	quotesRemoved := 0
+
 	for len(runes) > 0 {
-		// Find extent of path-like segment
-		n := slices.IndexFunc(runes, isNonPathRune)
-		seg := runes
-		if n >= 0 {
-			seg = seg[:n]
-		}
-		if slash := lastIndex(seg, '/'); slash >= 0 {
-			seg = seg[slash+1:]
-		}
+		var seg []rune
+		var more bool
+
+		seg, runes, more = getPathSeg(runes)
 		out = append(out, seg...)
-		if n == -1 {
+		if !more {
 			break
 		}
-		runes = runes[n:]
 
-		// Copy non-path runes verbatim
-		n = slices.IndexFunc(runes, isPathRune)
-		seg = runes
-		if n >= 0 {
-			seg = seg[:n]
-		}
-		lenPreTrim := len(seg)
-		seg = trimPathSeg(seg)
-		quotesRemoved += lenPreTrim - len(seg)
+		seg, runes, more = getNonPathSeg(runes, &quotesRemoved)
+		// Check for remaining quote in segment. This is to handle
+		// double quotes
 		if checkForQuote(seg) {
 			return "", fmt.Errorf("double quotes")
 		}
-
 		out = append(out, seg...)
-		if n == -1 {
+		if !more {
 			break
 		}
-		runes = runes[n:]
 	}
+
+	// We want balanced quotes for our paths
 	if quotesRemoved % 2 != 0 {
 		return "", fmt.Errorf("unbalanced quotes")
 	}
+
 	return string(out), nil
+}
+
+func getNonPathSeg(runes []rune, quotesRemoved *int) (seg []rune, remain []rune, more bool) {
+	// Get index of next path character
+	n := slices.IndexFunc(runes, isPathRune)
+	// Copy all characters before the path character
+	seg = runes
+	if n >= 0 {
+		seg = seg[:n]
+	}
+	// Trim a quote from the segment
+	lenPreTrim := len(seg)
+	seg = trimPathSeg(seg)
+	// If a quote was removed, increment the number of quotes removed
+	// This is for checking that the quotations are balanced
+	*quotesRemoved += lenPreTrim - len(seg)
+	// If there are no path like characters, we are done
+	if n == -1 {
+		return seg, []rune{}, false
+	}
+	remain = runes[n:]
+	return seg, remain, true
+}
+
+func getPathSeg(runes []rune) (seg []rune, remain []rune, more bool) {
+	// Find first index of a non-path character
+	n := slices.IndexFunc(runes, isNonPathRune)
+	// Get characters up to the non-path character
+	seg = runes
+	if n >= 0 {
+		seg = seg[:n]
+	}
+	// If there is a path separator, get the segment at
+	// the end of the path
+	if slash := lastIndex(seg, '/'); slash >= 0 {
+		seg = seg[slash+1:]
+	}
+	// if there is no non-path like characters, we are done
+	if n == -1 {
+		return seg, []rune{}, false
+	}
+	remain = runes[n:]
+	return seg, remain, true
 }
 
 func checkForQuote(p []rune) bool {
