@@ -80,16 +80,12 @@ func parseType(in string) (Type, error) {
 //	"Iface[a/b.T, c/d.U]" -> "Iface[b.T, d.U]"
 //	"Iface[a/b.Other[c/d.T]]" -> "Iface[b.Other[d.T]]"
 //	"Iface[*a/b.T]" -> "Iface[*b.T]"
-func stripPaths(in string) string {
+func stripPaths(in string) (string, error) {
 	runes := []rune(in)
 	out := make([]rune, 0, len(runes))
+	quotesRemoved := 0
 	for len(runes) > 0 {
 		// Find extent of path-like segment
-		isQuotedPath := false
-		if runes[0] == '"' {
-			runes = runes[1:]
-			isQuotedPath = true
-		}
 		n := slices.IndexFunc(runes, isNonPathRune)
 		seg := runes
 		if n >= 0 {
@@ -103,9 +99,6 @@ func stripPaths(in string) string {
 			break
 		}
 		runes = runes[n:]
-		if isQuotedPath && len(runes) > 0 {
-			runes = runes[1:]
-		}
 
 		// Copy non-path runes verbatim
 		n = slices.IndexFunc(runes, isPathRune)
@@ -113,39 +106,46 @@ func stripPaths(in string) string {
 		if n >= 0 {
 			seg = seg[:n]
 		}
-		seg = trimPathPrefix(seg)
-		seg = trimPathSuffix(seg)
+		lenPreTrim := len(seg)
+		seg = trimPathSeg(seg)
+		quotesRemoved += lenPreTrim - len(seg)
+		if checkForQuote(seg) {
+			return "", fmt.Errorf("double quotes")
+		}
+
 		out = append(out, seg...)
 		if n == -1 {
 			break
 		}
 		runes = runes[n:]
 	}
-	return string(out)
+	if quotesRemoved % 2 != 0 {
+		return "", fmt.Errorf("unbalanced quotes")
+	}
+	return string(out), nil
 }
 
-func trimPathSuffix(p []rune) []rune {
+func checkForQuote(p []rune) bool {
+	if len(p) == 0 {
+		return false
+	}
+	return p[0] == '"' || p[len(p)-1] == '"'
+}
+
+func trimPathSeg(p []rune) []rune {
 	if len(p) == 0 {
 		return p
 	}
 
-	if p[len(p)-1] != '"' {
-		return p
+	if p[0] == '"' {
+		return p[1:]
 	}
 
-	return p[:len(p)-1]
-}
-
-func trimPathPrefix(p []rune) []rune {
-	if len(p) == 0 {
-		return p
+	if p[len(p)-1] == '"' {
+		return p[:len(p)-1]
 	}
 
-	if p[0] != '"' {
-		return p
-	}
-
-	return p[1:]
+	return p
 }
 
 // lastIndex returns the index of the last occurrence of v in s, or -1 if not present.
@@ -210,7 +210,10 @@ func findInterface(input string, srcDir string) (path string, iface Type, err er
 			return "", Type{}, fmt.Errorf("invalid interface name: %s", input)
 		}
 		path = strings.Trim(baseInput[:dot], "\"")
-		id := stripPaths(input[dot+1:])
+		id, err := stripPaths(input[dot+1:])
+		if err != nil {
+			return "", Type{}, err
+		}
 		iface, err = parseType(id)
 		if err != nil {
 			return "", Type{}, err
